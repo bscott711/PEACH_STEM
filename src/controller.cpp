@@ -30,12 +30,21 @@ void controller_task(void *pvParameters) {
     // ********************************************************************
     // Encoder 0 - Manual Servo Control
     if (d0 != g_encoderState.position[0]) {
+
+      // Constrain the hardware position so the physical knob doesn't "wind up"
+      if (g_encoderState.position[0] > 100)
+        g_encoderState.position[0] = 100;
+      if (g_encoderState.position[0] < 0)
+        g_encoderState.position[0] = 0;
+
       // Update d0
       d0 = g_encoderState.position[0];
-      // Update servo percent
-      systemState.servoTargetPercent = constrain(d0, 0, 100);
 
-      printf((const char *)g_encoderState.position[0]); // cast may be messy
+      // Update servo percent
+      systemState.servoTargetPercent = d0;
+
+      // Proper way to print an integer
+      printf("Servo Percent: %d\n", d0);
     }
 
     // Push Button 0 - Servo Toggle
@@ -55,6 +64,10 @@ void controller_task(void *pvParameters) {
         // Or Round up
         g_encoderState.position[0] = 50;
       }
+
+      // Instantly sync the target and d0 so the servo moves immediately
+      d0 = g_encoderState.position[0];
+      systemState.servoTargetPercent = d0;
     }
 
     // ********************************************************************
