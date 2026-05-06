@@ -5,7 +5,8 @@
 // - Note: with UART we can chain and independently control 4 drivers from one
 // pin
 #define TXD1 32 // Any GPIO
-#define RXD1 33 // Any GPIO (Don't need to wrire, but library requires you to define)
+#define RXD1                                                                   \
+  33 // Any GPIO (Don't need to wrire, but library requires you to define)
 #define DIAG_PIN 4                  // Hardware Interrupt Pin for StallGuard
 #define MOTOR_MIN_SAFE_STEPS 0      // Min motor speed (Microsteps/second)
 #define MOTOR_MAX_SAFE_STEPS 100000 // Max motor speed (Microsteps/second)
@@ -22,9 +23,8 @@ public:
   void setVelocity(int newSpeed);
   void stop();
   void homeSensorless();
-  uint16_t getSGValue();
-  void configureDiagnostic(bool enable);
-  uint16_t getMicrostepsPerStep();
+
+  void updateSGThreshold(int newThreshold);
 
 private:
   TMC2209 driver;

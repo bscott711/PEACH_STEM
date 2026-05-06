@@ -15,7 +15,8 @@ SystemState systemState = {.mode = IDLE,
                            .actuatorTargetPercent = 0,
                            .triggerHoming = false,
                            .isHoming = false,
-                           .sgDiagMode = false};
+                           .sgDiagMode = false,
+                           .sgThreshold = 15};
 
 // Instantiate Hardware Objects
 // static Arm arm;
@@ -156,14 +157,27 @@ void controller_task(void *pvParameters) {
     // ********************************************************************
 
     // Push button 3 - Sensorless Homing (LONG PRESS)
-    if (g_encoderState.buttonLongPressed[3]) {
-      g_encoderState.buttonLongPressed[3] = false;
+        if (g_encoderState.buttonLongPressed[3])
+        {
+            g_encoderState.buttonLongPressed[3] = false;
+            printf("\nTriggering Hardware Sensorless Homing...\n");
+            systemState.triggerHoming = true; 
+        }
 
-      printf("\nTriggering Hardware Sensorless Homing...\n");
+        // ENCODER 3 (Live StallGuard Tuning)
+        static int32_t last_d3 = g_encoderState.position[3];
+        int32_t delta3 = g_encoderState.position[3] - last_d3;
+        last_d3 = g_encoderState.position[3];
 
-      // Tell the motor task to execute the homing routine
-      systemState.triggerHoming = true;
-    }
+        if (delta3 != 0)
+        {
+            systemState.sgThreshold += delta3;
+            
+            // Constrain between 0 and 255 to prevent overflow
+            systemState.sgThreshold = constrain(systemState.sgThreshold, 0, 255);
+            
+            printf("Enc 3 (SG Threshold): %d\n", systemState.sgThreshold);
+        }
 
     // Push button 3 - Autonomous Code (SHORT PRESS)
     if (g_encoderState.buttonPressed[3]) {

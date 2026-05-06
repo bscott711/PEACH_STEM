@@ -5,7 +5,20 @@ void motorDriver::begin(HardwareSerial &serial,
                         TMC2209::SerialAddress address) {
   driver.setup(serial, SERIAL_BAUD_RATE, address, RXD1, TXD1);
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
-  driver.enableCoolStep();
+
+  // --- CRITICAL FIX: GLOBAL STALLGUARD SETUP ---
+  // We must configure the sensor here so it is ALWAYS on, not just during
+  // homing.
+
+  driver.disableCoolStep();   // CoolStep must be off or it blinds StallGuard
+  driver.enableStealthChop(); // StealthChop must be on for StallGuard4
+  driver.setCoolStepDurationThreshold(1048575); // Open the velocity window
+
+  // Set to your perfectly tuned value!
+  driver.setStallGuardThreshold(15);
+
+  // ---------------------------------------------
+
   driver.enable();
 }
 
@@ -61,7 +74,11 @@ void motorDriver::homeSensorless() {
 
   // 7. Restore full power for normal operation
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
+}
 
-  // 7. Restore full power for normal operation
-  driver.setRunCurrent(RUN_CURRENT_PERCENT);
+void motorDriver::updateSGThreshold(int newThreshold) {
+  // The TMC2209 accepts threshold values from 0 to 255
+  newThreshold = constrain(newThreshold, 0, 255);
+  driver.setStallGuardThreshold(newThreshold);
+
 }

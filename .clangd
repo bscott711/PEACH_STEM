@@ -2,3 +2,29 @@ CompileFlags:
   Add:
     - "--target=arm-none-eabi"
     - "-DCONFIG_IDF_TARGET_ESP32"
+    - "-Wno-unknown-argument"
+    - "-isystem/Users/minesbioimaging/.platformio/packages/toolchain-xtensa-esp32/xtensa-esp32-elf/include/c++/8.4.0"
+    - "-isystem/Users/minesbioimaging/.platformio/packages/toolchain-xtensa-esp32/xtensa-esp32-elf/include/c++/8.4.0/xtensa-esp32-elf"
+    - "-isystem/Users/minesbioimaging/.platformio/packages/toolchain-xtensa-esp32/lib/gcc/xtensa-esp32-elf/8.4.0/include"
+    - "-isystem/Users/minesbioimaging/.platformio/packages/toolchain-xtensa-esp32/lib/gcc/xtensa-esp32-elf/8.4.0/include-fixed"
+    - "-isystem/Users/minesbioimaging/.platformio/packages/toolchain-xtensa-esp32/xtensa-esp32-elf/include"
+    - "-I/Users/minesbioimaging/.platformio/packages/framework-espidf/components/freertos/include"
+    - "-I/Users/minesbioimaging/.platformio/packages/framework-espidf/components/freertos/include/esp_additions"
+    - "-I/Users/minesbioimaging/.platformio/packages/framework-espidf/components/esp_hw_support/include"
+    - "-I/Users/minesbioimaging/.platformio/packages/framework-espidf/components/esp_common/include"
+    - "-I/Users/minesbioimaging/.platformio/packages/framework-espidf/components/esp_system/include"
+    - "-I/Users/minesbioimaging/.platformio/packages/framework-espidf/components/soc/include"
+    - "-I/Users/minesbioimaging/.platformio/packages/framework-espidf/components/hal/include"
+  Remove:
+    - "-mlongcalls"
+    - "-fstrict-volatile-bitfields"
+    - "-fno-tree-switch-conversion"
+    - "-fno-section-anchors"
+    - "-fno-jump-tables"
+    - "-fstack-protector-strong"
+    - "-Wno-frame-address"
+    - "-mfix-esp32-erratum-322"
+    - "-fmacro-prefix-map=*"
+
+Diagnostics:
+  UnusedIncludes: None

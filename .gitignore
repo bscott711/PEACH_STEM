@@ -11,4 +11,4 @@ sdkconfig.esp32dev
 .vscode/
 
 # cache
-.cache
+.cache/
