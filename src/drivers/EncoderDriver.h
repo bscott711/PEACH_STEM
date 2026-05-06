@@ -9,6 +9,7 @@ typedef struct
 {
     int32_t position[4];
     bool    buttonPressed[4]; // latched "press" event
+    bool    buttonLongPressed[4]; // latched "long press" event
 } EncoderState;
 
 extern EncoderState g_encoderState;

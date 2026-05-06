@@ -1,3 +1,4 @@
 CompileFlags:
   Add:
     - "--target=arm-none-eabi"
+    - "-DCONFIG_IDF_TARGET_ESP32"

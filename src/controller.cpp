@@ -12,7 +12,10 @@ SystemState systemState = {.mode = IDLE,
                            .actuatorDir = ACT_STOP,
                            .actualSpeed = 0,
                            .targetSpeed = 0,
-                           .actuatorTargetPercent = 0};
+                           .actuatorTargetPercent = 0,
+                           .triggerHoming = false,
+                           .isHoming = false,
+                           .sgDiagMode = false};
 
 // Instantiate Hardware Objects
 // static Arm arm;
@@ -151,10 +154,19 @@ void controller_task(void *pvParameters) {
     // ********************************************************************
     //                   ENCODER 3 - AUTONOMOUS CONTROL
     // ********************************************************************
-    // Encoder 3 - Autonomous Code
 
+    // Push button 3 - Sensorless Homing (LONG PRESS)
+    if (g_encoderState.buttonLongPressed[3]) {
+      g_encoderState.buttonLongPressed[3] = false;
+
+      printf("\nTriggering Hardware Sensorless Homing...\n");
+
+      // Tell the motor task to execute the homing routine
+      systemState.triggerHoming = true;
+    }
+
+    // Push button 3 - Autonomous Code (SHORT PRESS)
     if (g_encoderState.buttonPressed[3]) {
-
       // Service Flag
       g_encoderState.buttonPressed[3] = false;
       // maybe add while false loop to make sure we can emergency stop..?

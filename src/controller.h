@@ -33,6 +33,11 @@ struct SystemState
 
     // Actuator
     int actuatorTargetPercent;
+
+    // Homing Flags
+    volatile bool triggerHoming;
+    volatile bool isHoming;
+    volatile bool sgDiagMode;
 };
 
 extern SystemState systemState;
