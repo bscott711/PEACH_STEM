@@ -11,7 +11,7 @@
 #define MOTOR_MIN_SAFE_STEPS 0      // Min motor speed (Microsteps/second)
 #define MOTOR_MAX_SAFE_STEPS 100000 // Max motor speed (Microsteps/second)
 #define MOTOR_MAX_SAFE_ACCEL 4000
-#define RUN_CURRENT_PERCENT 100
+#define RUN_CURRENT_PERCENT 70
 #define SERIAL_BAUD_RATE 115200 // UART BAUD Rate
 
 // Stepper Motor Configs

@@ -16,7 +16,10 @@ SystemState systemState = {.mode = IDLE,
                            .triggerHoming = false,
                            .isHoming = false,
                            .sgDiagMode = false,
-                           .sgThreshold = 15};
+                           .sgThreshold = 16,
+                           .currentPosition = 0.0,
+                           .isHomed = false,
+                           .motorEncoderLimit = 16};
 
 // Instantiate Hardware Objects
 // static Arm arm;
@@ -123,6 +126,14 @@ void controller_task(void *pvParameters) {
     static bool motorPaused = false;
     static int32_t last_d2 = g_encoderState.position[2];
 
+    // Constrain the encoder so it doesn't wind up
+    if (g_encoderState.position[2] > systemState.motorEncoderLimit) {
+      g_encoderState.position[2] = systemState.motorEncoderLimit;
+    }
+    if (g_encoderState.position[2] < -systemState.motorEncoderLimit) {
+      g_encoderState.position[2] = -systemState.motorEncoderLimit;
+    }
+    
     int32_t d2 = g_encoderState.position[2];
 
     // If the encoder knob is moved, automatically unpause
@@ -157,27 +168,25 @@ void controller_task(void *pvParameters) {
     // ********************************************************************
 
     // Push button 3 - Sensorless Homing (LONG PRESS)
-        if (g_encoderState.buttonLongPressed[3])
-        {
-            g_encoderState.buttonLongPressed[3] = false;
-            printf("\nTriggering Hardware Sensorless Homing...\n");
-            systemState.triggerHoming = true; 
-        }
+    if (g_encoderState.buttonLongPressed[3]) {
+      g_encoderState.buttonLongPressed[3] = false;
+      printf("\nTriggering Hardware Sensorless Homing...\n");
+      systemState.triggerHoming = true;
+    }
 
-        // ENCODER 3 (Live StallGuard Tuning)
-        static int32_t last_d3 = g_encoderState.position[3];
-        int32_t delta3 = g_encoderState.position[3] - last_d3;
-        last_d3 = g_encoderState.position[3];
+    // ENCODER 3 (Live StallGuard Tuning)
+    static int32_t last_d3 = g_encoderState.position[3];
+    int32_t delta3 = g_encoderState.position[3] - last_d3;
+    last_d3 = g_encoderState.position[3];
 
-        if (delta3 != 0)
-        {
-            systemState.sgThreshold += delta3;
-            
-            // Constrain between 0 and 255 to prevent overflow
-            systemState.sgThreshold = constrain(systemState.sgThreshold, 0, 255);
-            
-            printf("Enc 3 (SG Threshold): %d\n", systemState.sgThreshold);
-        }
+    if (delta3 != 0) {
+      systemState.sgThreshold += delta3;
+
+      // Constrain between 0 and 255 to prevent overflow
+      systemState.sgThreshold = constrain(systemState.sgThreshold, 0, 255);
+
+      printf("Enc 3 (SG Threshold): %d\n", systemState.sgThreshold);
+    }
 
     // Push button 3 - Autonomous Code (SHORT PRESS)
     if (g_encoderState.buttonPressed[3]) {

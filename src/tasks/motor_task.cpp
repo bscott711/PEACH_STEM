@@ -5,8 +5,8 @@ static motorDriver motor;
 // 1 Full Second blind window for heavy acceleration
 const unsigned long BLIND_WINDOW_MS = 1000;
 
-// Set this to the speed value that corresponds to Encoder 4 (-4 or +4)
-const int MIN_STALLGUARD_SPEED = 19000;
+// Set this to the speed value that corresponds to Encoder 4 (-3 or +3)
+const int MIN_STALLGUARD_SPEED = 12000;
 
 void motor_task(void *parameter) {
   int interval = *(int *)parameter;
@@ -59,7 +59,18 @@ void motor_task(void *parameter) {
       newSpeed = 0;
     }
 
-    // 2. Normal speed control
+    // 2. Live Position Tracking & Limits
+    if (!motorLocked && !systemState.isHoming) {
+      // Integrate velocity to track position (using motorDistanceCalculator logic)
+      systemState.currentPosition += (newSpeed * interval) * 0.000001372;
+
+      // Enforce the hard travel limit (0 is the top limit defined by homing)
+      if (systemState.isHomed && systemState.currentPosition <= 0.0 && systemState.targetSpeed < 0) {
+        systemState.targetSpeed = 0; // Sync back to controller
+      }
+    }
+
+    // 3. Normal speed control
     if (newSpeed != systemState.targetSpeed) {
       newSpeed = systemState.targetSpeed;
 

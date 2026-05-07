@@ -40,6 +40,11 @@ struct SystemState
 
     // StallGuard Threshold for live tuning
     int sgThreshold;
+
+    // Motor Position Tracking
+    double currentPosition;
+    bool isHomed;
+    int motorEncoderLimit;
 };
 
 extern SystemState systemState;

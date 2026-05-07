@@ -1,4 +1,5 @@
 #include "MotorDriver.h"
+#include "../controller.h"
 
 // Initialize Motor
 void motorDriver::begin(HardwareSerial &serial,
@@ -15,11 +16,17 @@ void motorDriver::begin(HardwareSerial &serial,
   driver.setCoolStepDurationThreshold(1048575); // Open the velocity window
 
   // Set to your perfectly tuned value!
-  driver.setStallGuardThreshold(15);
+  driver.setStallGuardThreshold(systemState.sgThreshold);
 
-  // ---------------------------------------------
-
+  // Energize the coils
   driver.enable();
+
+  // --- NEW: STEALTHCHOP CALIBRATION WINDOW ---
+  // Force a dead stop and wait 200ms so the chip can measure
+  // the coil inductance and build its silent profile.
+  driver.moveAtVelocity(0);
+  vTaskDelay(pdMS_TO_TICKS(200));
+  // -------------------------------------------
 }
 
 void motorDriver::setVelocity(int newSpeed) {
@@ -71,14 +78,20 @@ void motorDriver::homeSensorless() {
   // 6. The DIAG pin fired! Stop instantly.
   setVelocity(0);
   Serial.println("--- Homing Complete! ---");
+  
+  // Set travel limit zero point
+  systemState.currentPosition = 0.0;
+  systemState.isHomed = true;
 
   // 7. Restore full power for normal operation
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
+
+  // --- RESTORE TUNED THRESHOLD ---
+  updateSGThreshold(systemState.sgThreshold);
 }
 
 void motorDriver::updateSGThreshold(int newThreshold) {
   // The TMC2209 accepts threshold values from 0 to 255
   newThreshold = constrain(newThreshold, 0, 255);
   driver.setStallGuardThreshold(newThreshold);
-
 }
