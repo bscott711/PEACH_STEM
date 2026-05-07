@@ -1,4 +1,5 @@
 #include "motor_task.h"
+#include "drivers/LCDDriver.h"
 
 static motorDriver motor;
 
@@ -35,7 +36,10 @@ void motor_task(void *parameter) {
       if ((millis() - lastMovementStartTime > BLIND_WINDOW_MS) &&
           (abs(newSpeed) > MIN_STALLGUARD_SPEED)) {
         motorLocked = true;
+        systemState.collisionDetected = true;
+        systemState.collisionTimestamp = millis();
         motor.stop();
+        LCD_setMessage("COLLISION DETECTED");
         Serial.println("\n!!! EMERGENCY STOP: COLLISION DETECTED !!!");
         Serial.println(
             "--- MOTOR LOCKED. TURN SPEED DOWN TO 0 TO UNLOCK ---\n");
@@ -45,6 +49,8 @@ void motor_task(void *parameter) {
     // --- CLEAR FAULT LOGIC ---
     if (motorLocked && systemState.targetSpeed == 0) {
       motorLocked = false;
+      systemState.collisionDetected = false;
+      LCD_setMessage("MOTOR UNLOCKED");
       Serial.println("--- MOTOR UNLOCKED. Ready for movement. ---");
     }
 
