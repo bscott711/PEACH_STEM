@@ -22,6 +22,7 @@ void setup() {
   // Task Update Intervals
   int task_update_motor = TASK_UPDATE_MOTOR;
   int servo_interval = TASK_UPDATE_SERVO;
+  int lcd_interval = TASK_REFRESH_LCD;
 
   // Create Tasks
   xTaskCreate(motor_task, "Update Motor", 4096, &task_update_motor, 1, NULL);
@@ -29,7 +30,7 @@ void setup() {
   xTaskCreate(controller_task, "Controller", 4096, NULL, 2, NULL);
   xTaskCreate(servo_task, "Servo", 8192, &servo_interval, 2, NULL);
   xTaskCreate(actuator_task, "Actuator", 4096, NULL, 2, NULL);
-  // xTaskCreate(LCD_task, "LCD", 4096, NULL, 2, NULL);
+  xTaskCreate(LCD_task, "LCD", 4096, &lcd_interval, 2, NULL);
 }
 
 void loop() {
