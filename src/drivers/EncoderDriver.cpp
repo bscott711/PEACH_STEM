@@ -48,52 +48,63 @@ void init_encoder() {
 void EncoderDriver_Service() {
   TickType_t now = xTaskGetTickCount();
 
-  if (xSemaphoreTake(encoderStateMutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 4; i++) {
 
-      // 1. Process Buttons with Software Debouncing
-      bool reading = ss.digitalRead(SEESAW_BUTTON_PINS[i]);
+    // 1. Process Buttons with Lockout Debouncing
+    bool reading = ss.digitalRead(SEESAW_BUTTON_PINS[i]);
+    bool setPressed = false;
+    bool setLongPressed = false;
 
-      if (reading != lastFlicker[i]) {
-        lastDebounceTime[i] = now;
-      }
-
+    if (reading != lastBtnLevel[i]) {
+      // Only process state change if debounce period has passed
       if ((now - lastDebounceTime[i]) >= pdMS_TO_TICKS(DEBOUNCE_DELAY_MS)) {
-        if (reading != lastBtnLevel[i]) {
-          lastBtnLevel[i] = reading;
+        lastDebounceTime[i] = now;
+        lastBtnLevel[i] = reading;
 
-          if (lastBtnLevel[i] == false) { // LOW = Pressed
-            btnPressTime[i] = now;
-          } else { // HIGH = Released
-            TickType_t duration = (now - btnPressTime[i]) * portTICK_PERIOD_MS;
+        if (reading == false) { 
+          // LOW = Pressed
+          btnPressTime[i] = now;
+        } else { 
+          // HIGH = Released
+          TickType_t duration = (now - btnPressTime[i]) * portTICK_PERIOD_MS;
 
-            if (duration >= 1000) {
-              g_encoderState.buttonLongPressed[i] = true;
-              ESP_LOGI("ENCODER", "Button %d LONG pressed", i);
-            } else {
-              g_encoderState.buttonPressed[i] = true;
-              ESP_LOGI("ENCODER", "Button %d pressed", i);
-            }
+          if (duration >= 1000) {
+            setLongPressed = true;
+            ESP_LOGI("ENCODER", "Button %d LONG pressed", i);
+          } else {
+            setPressed = true;
+            ESP_LOGI("ENCODER", "Button %d pressed", i);
           }
         }
       }
-      lastFlicker[i] = reading;
+    }
 
-      // 2. Process Encoder Rotation
-      // Adafruit lib returns 0 if I2C fails or no delta occurred.
-      int32_t d = ss.getEncoderDelta(i);
-      if (d != 0) {
-        g_encoderState.position[i] += d;
+    // 2. Process Encoder Rotation
+    // Adafruit lib returns 0 if I2C fails or no delta occurred.
+    int32_t d = ss.getEncoderDelta(i);
 
-        // Rate limit the serial output so I2C doesn't get starved
-        static TickType_t lastLogTime[4] = {0};
-        if ((now - lastLogTime[i]) >= pdMS_TO_TICKS(250)) {
-          ESP_LOGI("ENCODER", "Enc %d: %ld", i,
-                   (long)g_encoderState.position[i]);
-          lastLogTime[i] = now;
+    // 3. Update Global State (Mutex Protected)
+    if (setPressed || setLongPressed || d != 0) {
+      if (xSemaphoreTake(encoderStateMutex, portMAX_DELAY) == pdTRUE) {
+        if (setPressed) {
+          g_encoderState.buttonPressed[i] = true;
         }
+        if (setLongPressed) {
+          g_encoderState.buttonLongPressed[i] = true;
+        }
+        if (d != 0) {
+          g_encoderState.position[i] += d;
+
+          // Rate limit the serial output so I2C doesn't get starved
+          static TickType_t lastLogTime[4] = {0};
+          if ((now - lastLogTime[i]) >= pdMS_TO_TICKS(250)) {
+            ESP_LOGI("ENCODER", "Enc %d: %ld", i,
+                     (long)g_encoderState.position[i]);
+            lastLogTime[i] = now;
+          }
+        }
+        xSemaphoreGive(encoderStateMutex);
       }
     }
-    xSemaphoreGive(encoderStateMutex);
   }
 }
