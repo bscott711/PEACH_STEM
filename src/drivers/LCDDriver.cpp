@@ -27,6 +27,60 @@ static uint32_t lcdBtnPressTime[4] = {0, 0, 0, 0};
 // LCD-specific mutex for thread-safe message buffer access
 static SemaphoreHandle_t lcdMutex = NULL;
 
+static void draw_splashScreen() {
+  u8g2.clearBuffer();
+
+  // === Half-peach graphic (far left, centered vertically) ===
+  const int cx = 22, cy = 34, r = 22;
+
+  // Draw the full peach body
+  u8g2.drawDisc(cx, cy, r);
+
+  // Cut it in half: clear the left side to create the flat cut face
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(0, cy - r - 1, cx - 4, r * 2 + 2);
+  u8g2.setDrawColor(1);
+
+  // Flat cut face (vertical line)
+  u8g2.drawVLine(cx - 4, cy - r + 2, r * 2 - 4);
+
+  // Inner flesh ring to give depth
+  u8g2.setDrawColor(0);
+  u8g2.drawCircle(cx, cy, r - 4);
+  u8g2.setDrawColor(1);
+
+  // Pit: concentric circles in the center
+  u8g2.drawDisc(cx + 2, cy, 7, U8G2_DRAW_ALL);
+  u8g2.setDrawColor(0);
+  u8g2.drawDisc(cx + 2, cy, 4, U8G2_DRAW_ALL);
+  u8g2.setDrawColor(1);
+  // Pit texture
+  u8g2.drawPixel(cx + 2, cy);
+  u8g2.drawPixel(cx + 3, cy - 1);
+  u8g2.drawPixel(cx + 1, cy + 1);
+
+  // Stem at top
+  u8g2.drawLine(cx + 3, cy - r + 1, cx + 6, cy - r - 5);
+  u8g2.drawLine(cx + 4, cy - r + 1, cx + 7, cy - r - 5);
+
+  // Small leaf
+  u8g2.drawEllipse(cx + 10, cy - r - 3, 5, 2);
+  u8g2.drawLine(cx + 7, cy - r - 4, cx + 14, cy - r - 3);
+
+  // === Text (right of peach) ===
+  u8g2.setFont(u8g2_font_helvB14_tr);
+  u8g2.drawStr(50, 30, "PEACH");
+
+  u8g2.setFont(u8g2_font_helvB18_tr);
+  u8g2.drawStr(66, 54, "PIT");
+
+  // Small version tag
+  u8g2.setFont(u8g2_font_tiny5_tf);
+  u8g2.drawStr(50, 62, "v1.0");
+
+  u8g2.sendBuffer();
+}
+
 void LCDInit() {
   u8g2.begin();
   u8g2.setFont(u8g2_font_tiny5_tf);
@@ -35,6 +89,13 @@ void LCDInit() {
   if (lcdMutex == NULL) {
     ESP_LOGE("LCD", "Failed to create LCD string mutex");
   }
+
+  // Show splash screen for 2.5 seconds
+  draw_splashScreen();
+  vTaskDelay(pdMS_TO_TICKS(2500));
+
+  // Restore the small UI font
+  u8g2.setFont(u8g2_font_tiny5_tf);
 }
 
 void LCD_setMessage(const char *msg) {
