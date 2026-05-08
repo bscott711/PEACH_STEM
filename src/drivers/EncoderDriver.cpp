@@ -41,6 +41,12 @@ void init_encoder() {
     g_encoderState.buttonPressed[i] = false;
     g_encoderState.buttonLongPressed[i] = false;
   }
+
+  // Override encoder 0 to match saved servo start position
+  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+    g_encoderState.position[0] = systemState.servoCalStart;
+    xSemaphoreGive(systemStateMutex);
+  }
 }
 
 void EncoderDriver_Service() {

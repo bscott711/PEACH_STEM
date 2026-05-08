@@ -46,10 +46,20 @@ void initSystemState() {
   }
 
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.isHomed = preferences.getBool("isHomed", false);
-    systemState.currentPosition = preferences.getFloat("pos", 0.0f);
+    // Always require re-homing on boot (clears stale NVS homing data)
+    systemState.isHomed = false;
+    systemState.currentPosition = 0.0f;
+    preferences.putBool("isHomed", false);
+    preferences.putFloat("pos", 0.0f);
+
+    // Load servo calibration from NVS
     systemState.servoCalStart = preferences.getInt("srvStart", 0);
     systemState.servoCalCenter = preferences.getInt("srvCenter", 50);
+
+    // Set servo to the saved start position on boot
+    systemState.servoTargetPercent = systemState.servoCalStart;
+    systemState.servoPercent = systemState.servoCalStart;
+
     xSemaphoreGive(systemStateMutex);
   }
 }
