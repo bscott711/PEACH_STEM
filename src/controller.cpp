@@ -4,6 +4,21 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <cstdio>
+#include <Preferences.h>
+
+Preferences preferences;
+
+void initSystemState() {
+  preferences.begin("peach", false);
+  systemState.isHomed = preferences.getBool("isHomed", false);
+  systemState.currentPosition = preferences.getDouble("pos", 0.0);
+}
+
+void saveMotorState() {
+  preferences.putBool("isHomed", systemState.isHomed);
+  preferences.putDouble("pos", systemState.currentPosition);
+  Serial.println("--- Saved Motor State to NVS ---");
+}
 
 // Instantiate Global System State
 SystemState systemState = {.mode = IDLE,
@@ -21,7 +36,7 @@ SystemState systemState = {.mode = IDLE,
                            .sgThreshold = 16,
                            .currentPosition = 0.0,
                            .isHomed = false,
-                           .motorEncoderLimit = 16,
+                           .motorEncoderLimit = 15,
                            .collisionDetected = false,
                            .collisionTimestamp = 0};
 
@@ -192,7 +207,7 @@ void controller_task(void *pvParameters) {
 
     // Apply speed based on pause state
     if (!motorPaused) {
-      systemState.targetSpeed = d2 * 5000;
+      systemState.targetSpeed = d2 * 333;
     } else {
       // Force stop when paused
       systemState.targetSpeed = 0;

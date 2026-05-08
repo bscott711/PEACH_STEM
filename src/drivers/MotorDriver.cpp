@@ -12,8 +12,14 @@ void motorDriver::begin(HardwareSerial &serial,
   // homing.
 
   driver.disableCoolStep();   // CoolStep must be off or it blinds StallGuard
-  driver.enableStealthChop(); // StealthChop must be on for StallGuard4
-  driver.setCoolStepDurationThreshold(1048575); // Open the velocity window
+  
+  // Normal Movement is StealthChop (Quiet and smooth)
+  driver.enableStealthChop(); 
+  
+  // Use 16 microsteps (with interpolation enabled automatically by TMC2209)
+  driver.setMicrostepsPerStep(16);
+
+  driver.setCoolStepDurationThreshold(0); // SG off for now
 
   // Set to your perfectly tuned value!
   driver.setStallGuardThreshold(systemState.sgThreshold);
@@ -85,6 +91,15 @@ void motorDriver::homeSensorless() {
 
   // 7. Restore full power for normal operation
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
+  
+  // Keep StealthChop enabled for normal movement
+  driver.enableStealthChop();
+
+  // Turn SG off after homing
+  driver.setCoolStepDurationThreshold(0);
+
+  // Save the new homed position to NVS
+  saveMotorState();
 
   // --- RESTORE TUNED THRESHOLD ---
   updateSGThreshold(systemState.sgThreshold);

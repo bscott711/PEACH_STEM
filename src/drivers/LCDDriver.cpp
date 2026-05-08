@@ -113,23 +113,22 @@ void draw_encoderStatus() {
     u8g2.drawDisc(75, 21, 2); // Center dot
   }
 
-  // Encoder 2: Motor (display in kRPM with sign)
-  int rpm_k = abs(motorTarget) / 1000;
-  snprintf(buf, sizeof(buf), "S2:Mot:%c%dk", motorTarget >= 0 ? '+' : '-',
-           rpm_k);
+  // Encoder 2: Motor (display in steps -15 to +15)
+  int step = motorTarget / 333;
+  snprintf(buf, sizeof(buf), "S2:Mot:%+03d", step);
   u8g2.drawStr(0, 32, buf);
   
   // Custom Motor Speed Bar (Center at x=85)
   u8g2.drawFrame(51, 25, 69, 9); // Frame from x=51 to 119
   u8g2.drawLine(85, 25, 85, 33); // Center zero mark
   
-  int clicks = abs(motorTarget) / 5000;
-  if (clicks > 16) clicks = 16;
+  int clicks = abs(step);
+  if (clicks > 15) clicks = 15;
   
   if (motorTarget > 0) {
-    for (int i = 0; i < clicks; i++) u8g2.drawLine(87 + i * 2, 27, 87 + i * 2, 31);
+    u8g2.drawBox(87, 27, clicks * 2, 5);
   } else if (motorTarget < 0) {
-    for (int i = 0; i < clicks; i++) u8g2.drawLine(83 - i * 2, 27, 83 - i * 2, 31);
+    u8g2.drawBox(83 - (clicks * 2), 27, clicks * 2, 5);
   }
 
   // Show [P] inside the empty right-side of the bar if paused

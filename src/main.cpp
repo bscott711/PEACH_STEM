@@ -11,6 +11,9 @@ void setup() {
   // Begin USB serial for debugging/monitoring
   Serial.begin(115200);
 
+  // Initialize System State from NVS
+  initSystemState();
+
   // Start I2C Line (Used by encoder)
   Wire.begin(21, 22);
 

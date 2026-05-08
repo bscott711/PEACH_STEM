@@ -43,5 +43,8 @@ struct SystemState {
 
 extern SystemState systemState;
 
+void initSystemState();
+void saveMotorState();
+
 // FreeRTOS task entry
 void controller_task(void *pvParameters);

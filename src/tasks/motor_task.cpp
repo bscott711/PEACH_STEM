@@ -4,10 +4,10 @@
 static motorDriver motor;
 
 // 1 Full Second blind window for heavy acceleration
-const unsigned long BLIND_WINDOW_MS = 1000;
+// const unsigned long BLIND_WINDOW_MS = 1000;
 
 // Set this to the speed value that corresponds to Encoder 4 (-3 or +3)
-const int MIN_STALLGUARD_SPEED = 12000;
+// const int MIN_STALLGUARD_SPEED = 12000;
 
 void motor_task(void *parameter) {
   int interval = *(int *)parameter;
@@ -15,7 +15,7 @@ void motor_task(void *parameter) {
 
   int newSpeed = systemState.targetSpeed;
   bool motorLocked = false;
-  unsigned long lastMovementStartTime = 0;
+  // unsigned long lastMovementStartTime = 0;
 
   // Track the live threshold
   int currentSGThreshold = systemState.sgThreshold;
@@ -30,8 +30,10 @@ void motor_task(void *parameter) {
     }
 
     // --- POLLING CRASH DETECTION ---
-    bool diagPinHigh = (digitalRead(DIAG_PIN) == HIGH);
+    // bool diagPinHigh = (digitalRead(DIAG_PIN) == HIGH);
 
+    // LIVE SG DISABLED: SG4 requires StealthChop, which we are disabling for normal movement.
+    /*
     if (diagPinHigh && !systemState.isHoming && !motorLocked) {
       if ((millis() - lastMovementStartTime > BLIND_WINDOW_MS) &&
           (abs(newSpeed) > MIN_STALLGUARD_SPEED)) {
@@ -45,6 +47,7 @@ void motor_task(void *parameter) {
             "--- MOTOR LOCKED. TURN SPEED DOWN TO 0 TO UNLOCK ---\n");
       }
     }
+    */
 
     // --- CLEAR FAULT LOGIC ---
     if (motorLocked && systemState.targetSpeed == 0) {
@@ -84,8 +87,13 @@ void motor_task(void *parameter) {
         motor.stop();
       } else {
         // Reset the blind window timer every time the speed changes
-        lastMovementStartTime = millis();
+        // lastMovementStartTime = millis();
         motor.setVelocity(newSpeed);
+      }
+
+      // Save state to NVS when motor comes to a deliberate stop
+      if (newSpeed == 0 && systemState.isHomed) {
+        saveMotorState();
       }
     }
 
