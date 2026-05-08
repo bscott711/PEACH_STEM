@@ -99,7 +99,7 @@ static void handleServoEncoder() {
       xSemaphoreGive(systemStateMutex);
     }
 
-    int newTarget = (currentTarget <= SERVO_CENTER_PERCENT)
+    int newTarget = (currentTarget < SERVO_CENTER_PERCENT)
                         ? SERVO_CENTER_PERCENT
                         : SERVO_MIN_PERCENT;
     LCD_setMessage(newTarget == SERVO_CENTER_PERCENT ? "Servo: Center"

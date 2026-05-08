@@ -9,7 +9,6 @@ EncoderState g_encoderState;
 
 // State tracking for debouncing and edge detection
 static bool lastBtnLevel[4];
-static bool lastFlicker[4];
 static TickType_t lastDebounceTime[4] = {0};
 static TickType_t btnPressTime[4] = {0};
 
@@ -32,7 +31,6 @@ void init_encoder() {
 
     bool state = ss.digitalRead(SEESAW_BUTTON_PINS[i]);
     lastBtnLevel[i] = state;
-    lastFlicker[i] = state;
   }
 
   ss.setGPIOInterrupts(mask, 1);
@@ -50,21 +48,23 @@ void EncoderDriver_Service() {
 
   for (int i = 0; i < 4; i++) {
 
-    // 1. Process Buttons with Lockout Debouncing
+    // 1. Process Buttons with Lockout Debouncing + Confirmation Read
     bool reading = ss.digitalRead(SEESAW_BUTTON_PINS[i]);
     bool setPressed = false;
     bool setLongPressed = false;
 
     if (reading != lastBtnLevel[i]) {
-      // Only process state change if debounce period has passed
-      if ((now - lastDebounceTime[i]) >= pdMS_TO_TICKS(DEBOUNCE_DELAY_MS)) {
+      // Double-read to filter single-sample I2C glitches
+      bool confirm = ss.digitalRead(SEESAW_BUTTON_PINS[i]);
+      if (confirm == reading &&
+          (now - lastDebounceTime[i]) >= pdMS_TO_TICKS(DEBOUNCE_DELAY_MS)) {
         lastDebounceTime[i] = now;
         lastBtnLevel[i] = reading;
 
-        if (reading == false) { 
+        if (reading == false) {
           // LOW = Pressed
           btnPressTime[i] = now;
-        } else { 
+        } else {
           // HIGH = Released
           TickType_t duration = (now - btnPressTime[i]) * portTICK_PERIOD_MS;
 
