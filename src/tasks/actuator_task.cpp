@@ -1,59 +1,54 @@
-#include "actuator_task.h"
-
-// Actuator
-// - Fully retracted: 10mm
-// - Full extended:   10mm
-// - Half way @ 15mm
-// - Time to fully extend: 1000ms (timed)
+#include "tasks/actuator_task.h"
+#include <esp_log.h>
 
 // Time from 0% (retracted) to 100% (extended)
 static const uint32_t FULL_EXTEND_TIME_MS = 1000; // Calibrate!
 
-// Tracks our estimated current position (open-loop)
-static int g_actuatorCurrentPct = 0;
-
-static void Actuator_MoveToPercent(int targetPct) {
-  targetPct = constrain(targetPct, 0, 100);
-
-  int diff = targetPct - g_actuatorCurrentPct;
-  if (diff == 0)
-    return;
-
-  // Convert percent difference -> milliseconds
-  uint32_t moveMs = (uint32_t)(abs(diff) * FULL_EXTEND_TIME_MS) / 100;
-
-  // Pick direction
-  if (diff > 0)
-    HBridge_Set(ACT_FORWARD);
-  else
-    HBridge_Set(ACT_REVERSE);
-
-  // Move for computed time, then stop
-  vTaskDelay(pdMS_TO_TICKS(moveMs));
-  HBridge_Set(ACT_STOP);
-
-  // Update our estimate
-  g_actuatorCurrentPct = targetPct;
-}
-
 void actuator_task(void *pvParameters) {
   HBridge_Init();
-  // Home (retract) on boot
+
+  // Home (retract) on boot.
+  // It is safe to block here since the RTOS scheduler is just starting.
   HBridge_Set(ACT_REVERSE);
   vTaskDelay(pdMS_TO_TICKS(FULL_EXTEND_TIME_MS));
   HBridge_Set(ACT_STOP);
-  g_actuatorCurrentPct = 0;
 
-  int lastTarget = -1;
+  float currentPct = 0.0f;
+  int interval = TASK_UPDATE_ACTUATOR;
+  TickType_t lastWakeTime = xTaskGetTickCount();
+
+  // Calculate the percentage traveled per task interval
+  // e.g., (100.0 * 10ms) / 1000ms = 1.0% per tick
+  float pctPerTick = (100.0f * (float)interval) / (float)FULL_EXTEND_TIME_MS;
 
   while (1) {
-    int target = systemState.actuatorTargetPercent;
+    int targetPct = currentPct;
 
-    if (target != lastTarget) {
-      Actuator_MoveToPercent(target);
-      lastTarget = target;
+    // 1. Safely read target from global state
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+      targetPct = systemState.actuatorTargetPercent;
+      xSemaphoreGive(systemStateMutex);
+    } else {
+      ESP_LOGW("ACTUATOR", "Mutex timeout reading target");
     }
 
-    vTaskDelay(pdMS_TO_TICKS(10));
+    targetPct = constrain(targetPct, 0, 100);
+
+    // 2. Non-blocking movement evaluation
+    if (currentPct < targetPct) {
+      currentPct += pctPerTick;
+      if (currentPct > targetPct)
+        currentPct = targetPct; // Clamp exact arrival
+      HBridge_Set(ACT_FORWARD);
+    } else if (currentPct > targetPct) {
+      currentPct -= pctPerTick;
+      if (currentPct < targetPct)
+        currentPct = targetPct; // Clamp exact arrival
+      HBridge_Set(ACT_REVERSE);
+    } else {
+      HBridge_Set(ACT_STOP);
+    }
+
+    vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(interval));
   }
 }
