@@ -1,4 +1,3 @@
-#include "ServoDriver.h"
 #include "drivers/ServoDriver.h"
 
 // Initialize PWM hardware for servo

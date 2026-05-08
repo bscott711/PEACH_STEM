@@ -1,10 +1,6 @@
 #pragma once
 #include <Arduino.h>
 
-/***********************************************
-             Tasks Timing Intervals
-***********************************************/
-
 // ---- Hardware Config ----
 #define SERVO_PIN 13
 #define SERVO_LEDC_CH 0
