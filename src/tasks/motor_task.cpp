@@ -32,7 +32,8 @@ void motor_task(void *parameter) {
     // --- POLLING CRASH DETECTION ---
     // bool diagPinHigh = (digitalRead(DIAG_PIN) == HIGH);
 
-    // LIVE SG DISABLED: SG4 requires StealthChop, which we are disabling for normal movement.
+    // LIVE SG DISABLED: SG4 requires StealthChop, which we are disabling for
+    // normal movement.
     /*
     if (diagPinHigh && !systemState.isHoming && !motorLocked) {
       if ((millis() - lastMovementStartTime > BLIND_WINDOW_MS) &&
@@ -70,11 +71,13 @@ void motor_task(void *parameter) {
 
     // 2. Live Position Tracking & Limits
     if (!motorLocked && !systemState.isHoming) {
-      // Integrate velocity to track position (using motorDistanceCalculator logic)
+      // Integrate velocity to track position (using motorDistanceCalculator
+      // logic)
       systemState.currentPosition += (newSpeed * interval) * 0.000001372;
 
       // Enforce the hard travel limit (0 is the top limit defined by homing)
-      if (systemState.isHomed && systemState.currentPosition <= 0.0 && systemState.targetSpeed < 0) {
+      if (systemState.isHomed && systemState.currentPosition <= 0.0 &&
+          systemState.targetSpeed < 0) {
         systemState.targetSpeed = 0; // Sync back to controller
       }
     }

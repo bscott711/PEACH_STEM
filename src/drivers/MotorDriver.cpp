@@ -11,11 +11,11 @@ void motorDriver::begin(HardwareSerial &serial,
   // We must configure the sensor here so it is ALWAYS on, not just during
   // homing.
 
-  driver.disableCoolStep();   // CoolStep must be off or it blinds StallGuard
-  
+  driver.disableCoolStep(); // CoolStep must be off or it blinds StallGuard
+
   // Normal Movement is StealthChop (Quiet and smooth)
-  driver.enableStealthChop(); 
-  
+  driver.enableStealthChop();
+
   // Use 16 microsteps (with interpolation enabled automatically by TMC2209)
   driver.setMicrostepsPerStep(16);
 
@@ -84,14 +84,14 @@ void motorDriver::homeSensorless() {
   // 6. The DIAG pin fired! Stop instantly.
   setVelocity(0);
   Serial.println("--- Homing Complete! ---");
-  
+
   // Set travel limit zero point
   systemState.currentPosition = 0.0;
   systemState.isHomed = true;
 
   // 7. Restore full power for normal operation
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
-  
+
   // Keep StealthChop enabled for normal movement
   driver.enableStealthChop();
 

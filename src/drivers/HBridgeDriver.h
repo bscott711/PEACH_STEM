@@ -11,5 +11,5 @@ void HBridge_Set(ActuatorDirection dir);
 
 /***********************************************
              Tasks Timing Intervals
-***********************************************/ 
+***********************************************/
 #define TASK_UPDATE_HBRIDGE 100

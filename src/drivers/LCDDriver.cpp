@@ -59,7 +59,8 @@ void draw_displayTimer() {
 void draw_buttonStatus() {
   // Draw 4 small indicators for encoder buttons 0-3 (top-RIGHT corner)
   for (int i = 0; i < 4; i++) {
-    bool pressed = (millis() - buttonPressTime[i] < 200) || g_encoderState.buttonLongPressed[i];
+    bool pressed = (millis() - buttonPressTime[i] < 200) ||
+                   g_encoderState.buttonLongPressed[i];
     if (pressed) {
       u8g2.drawDisc(100 + (i * 6), 4, 2); // filled = pressed
     } else {
@@ -103,7 +104,7 @@ void draw_encoderStatus() {
   // Encoder 1: Actuator (0-100%)
   snprintf(buf, sizeof(buf), "S1:Act:%03d%%", actuatorTarget);
   u8g2.drawStr(0, 24, buf);
-  
+
   // Single Triangle (filled UP if > 50, filled DOWN if < 50, CIRCLE if == 50)
   if (actuatorTarget > 50) {
     u8g2.drawTriangle(75, 18, 71, 24, 79, 24); // UP
@@ -117,14 +118,15 @@ void draw_encoderStatus() {
   int step = motorTarget / 333;
   snprintf(buf, sizeof(buf), "S2:Mot:%+03d", step);
   u8g2.drawStr(0, 32, buf);
-  
+
   // Custom Motor Speed Bar (Center at x=85)
   u8g2.drawFrame(51, 25, 69, 9); // Frame from x=51 to 119
   u8g2.drawLine(85, 25, 85, 33); // Center zero mark
-  
+
   int clicks = abs(step);
-  if (clicks > 15) clicks = 15;
-  
+  if (clicks > 15)
+    clicks = 15;
+
   if (motorTarget > 0) {
     u8g2.drawBox(87, 27, clicks * 2, 5);
   } else if (motorTarget < 0) {
