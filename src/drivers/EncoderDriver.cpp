@@ -1,38 +1,40 @@
 #include "drivers/EncoderDriver.h"
-#include "controller.h"
+#include "controller.h" // Gives access to encoderStateMutex
 #include <Adafruit_seesaw.h>
-#include <Wire.h>
+#include <esp_log.h>
 
-// Seesaw Object bound to I2C. All encoder communication happens through this.
 static Adafruit_seesaw ss(&Wire);
 
-// Global shared struct
 EncoderState g_encoderState;
 
-// Stores previous button level and press times for edge/hold detection
+// State tracking for debouncing and edge detection
 static bool lastBtnLevel[4];
-static uint32_t btnPressTime[4];
+static bool lastFlicker[4];
+static TickType_t lastDebounceTime[4] = {0};
+static TickType_t btnPressTime[4] = {0};
 
-// Initialize the 4-encoder Seesaw board
+const TickType_t DEBOUNCE_DELAY_MS = 50;
+
 void init_encoder() {
   if (!ss.begin(ENCODER_I2C_ADDR)) {
-    Serial.printf("Failed to detect encoder.");
+    ESP_LOGE("ENCODER", "Failed to detect I2C encoder at 0x%02X",
+             ENCODER_I2C_ADDR);
+    vTaskDelay(pdMS_TO_TICKS(2000));
     while (true) {
       vTaskDelay(portMAX_DELAY);
     }
   }
 
-  ss.pinMode(12, INPUT_PULLUP);
-  ss.pinMode(14, INPUT_PULLUP);
-  ss.pinMode(17, INPUT_PULLUP);
-  ss.pinMode(9, INPUT_PULLUP);
+  uint32_t mask = 0;
+  for (int i = 0; i < 4; i++) {
+    ss.pinMode(SEESAW_BUTTON_PINS[i], INPUT_PULLUP);
+    mask |= (1UL << SEESAW_BUTTON_PINS[i]);
 
-  lastBtnLevel[0] = ss.digitalRead(12);
-  lastBtnLevel[1] = ss.digitalRead(14);
-  lastBtnLevel[2] = ss.digitalRead(17);
-  lastBtnLevel[3] = ss.digitalRead(9);
+    bool state = ss.digitalRead(SEESAW_BUTTON_PINS[i]);
+    lastBtnLevel[i] = state;
+    lastFlicker[i] = state;
+  }
 
-  uint32_t mask = (1UL << 12) | (1UL << 14) | (1UL << 17) | (1UL << 9);
   ss.setGPIOInterrupts(mask, 1);
 
   for (int i = 0; i < 4; i++) {
@@ -40,37 +42,58 @@ void init_encoder() {
     ss.enableEncoderInterrupt(i);
     g_encoderState.buttonPressed[i] = false;
     g_encoderState.buttonLongPressed[i] = false;
-    btnPressTime[i] = 0;
   }
 }
 
 void EncoderDriver_Service() {
-  int pins[] = {12, 14, 17, 9};
+  TickType_t now = xTaskGetTickCount();
 
-  for (int i = 0; i < 4; i++) {
-    // 1. Process Buttons (Short vs Long Press)
-    bool b = ss.digitalRead(pins[i]);
+  if (xSemaphoreTake(encoderStateMutex, portMAX_DELAY) == pdTRUE) {
+    for (int i = 0; i < 4; i++) {
 
-    if (lastBtnLevel[i] == true && b == false) {
-      // Falling Edge (Button Pressed Down)
-      btnPressTime[i] = millis();
-    } else if (lastBtnLevel[i] == false && b == true) {
-      // Rising Edge (Button Released)
-      if (millis() - btnPressTime[i] >= 1000) {
-        g_encoderState.buttonLongPressed[i] = true;
-        Serial.printf("Button %d LONG pressed\n", i);
-      } else {
-        g_encoderState.buttonPressed[i] = true;
-        Serial.printf("Button %d pressed\n", i);
+      // 1. Process Buttons with Software Debouncing
+      bool reading = ss.digitalRead(SEESAW_BUTTON_PINS[i]);
+
+      if (reading != lastFlicker[i]) {
+        lastDebounceTime[i] = now;
+      }
+
+      if ((now - lastDebounceTime[i]) >= pdMS_TO_TICKS(DEBOUNCE_DELAY_MS)) {
+        if (reading != lastBtnLevel[i]) {
+          lastBtnLevel[i] = reading;
+
+          if (lastBtnLevel[i] == false) { // LOW = Pressed
+            btnPressTime[i] = now;
+          } else { // HIGH = Released
+            TickType_t duration = (now - btnPressTime[i]) * portTICK_PERIOD_MS;
+
+            if (duration >= 1000) {
+              g_encoderState.buttonLongPressed[i] = true;
+              ESP_LOGI("ENCODER", "Button %d LONG pressed", i);
+            } else {
+              g_encoderState.buttonPressed[i] = true;
+              ESP_LOGI("ENCODER", "Button %d pressed", i);
+            }
+          }
+        }
+      }
+      lastFlicker[i] = reading;
+
+      // 2. Process Encoder Rotation
+      // Adafruit lib returns 0 if I2C fails or no delta occurred.
+      int32_t d = ss.getEncoderDelta(i);
+      if (d != 0) {
+        g_encoderState.position[i] += d;
+
+        // Rate limit the serial output so I2C doesn't get starved
+        static TickType_t lastLogTime[4] = {0};
+        if ((now - lastLogTime[i]) >= pdMS_TO_TICKS(250)) {
+          ESP_LOGI("ENCODER", "Enc %d: %ld", i,
+                   (long)g_encoderState.position[i]);
+          lastLogTime[i] = now;
+        }
       }
     }
-    lastBtnLevel[i] = b;
-
-    // 2. Process Encoder Rotation
-    int32_t d = ss.getEncoderDelta(i);
-    if (d != 0) {
-      g_encoderState.position[i] += d;
-      Serial.printf("Enc %d: %d\n", i, (int)g_encoderState.position[i]);
-    }
+    xSemaphoreGive(encoderStateMutex);
   }
 }
