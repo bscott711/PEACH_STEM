@@ -49,6 +49,12 @@ void actuator_task(void *pvParameters) {
       HBridge_Set(ACT_STOP);
     }
 
+    // 3. Update the global state with our actual physical position
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+      systemState.actuatorPercent = (int)currentPct;
+      xSemaphoreGive(systemStateMutex);
+    }
+
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(interval));
   }
 }

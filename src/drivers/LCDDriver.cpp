@@ -118,7 +118,7 @@ static void draw_encoderStatus() {
 
   // Static caches so the UI doesn't zero out if the mutex times out
   static int servoTarget = 0, servoActual = 0, actuatorTarget = 0,
-             motorTarget = 0, sgThreshold = 16;
+             actuatorActual = 0, motorTarget = 0, sgThreshold = 16;
   static int servoCalStart = 0, servoCalCenter = 50;
   static DeviceMode currentMode = IDLE;
   static bool isHoming = false, sgDiagMode = false;
@@ -130,6 +130,7 @@ static void draw_encoderStatus() {
     servoTarget = systemState.servoTargetPercent;
     servoActual = systemState.servoPercent;
     actuatorTarget = systemState.actuatorTargetPercent;
+    actuatorActual = systemState.actuatorPercent;
     motorTarget = systemState.targetSpeed;
     sgThreshold = systemState.sgThreshold;
     currentMode = systemState.mode;
@@ -153,21 +154,21 @@ static void draw_encoderStatus() {
     u8g2.drawStr(115, 6, "[!]");
   }
 
-  // Encoder 0: Servo
+  // Encoder 0: Servo — Row at y=11, text baseline y=17
   if (servoCalStep == CAL_SET_START) {
     snprintf(statusBuffer, sizeof(statusBuffer), "S0:CAL START:%03d%%",
              servoTarget);
-    u8g2.drawStr(0, 16, statusBuffer);
+    u8g2.drawStr(0, 17, statusBuffer);
   } else if (servoCalStep == CAL_SET_CENTER) {
     snprintf(statusBuffer, sizeof(statusBuffer), "S0:CAL CTR:%03d%%",
              servoTarget);
-    u8g2.drawStr(0, 16, statusBuffer);
+    u8g2.drawStr(0, 17, statusBuffer);
   } else {
     snprintf(statusBuffer, sizeof(statusBuffer), "S0:Srv:%03d%%", servoTarget);
-    u8g2.drawStr(0, 16, statusBuffer);
+    u8g2.drawStr(0, 17, statusBuffer);
 
-    // Live sliding dot: track from x=72 to x=124, y centered at 13
-    const int trackL = 72, trackR = 124, trackY = 13;
+    // Live sliding dot: track from x=72 to x=124, y centered at 14
+    const int trackL = 72, trackR = 124, trackY = 14;
     u8g2.drawHLine(trackL, trackY, trackR - trackL);
 
     // Tick marks at calibrated start and center positions
@@ -176,52 +177,60 @@ static void draw_encoderStatus() {
     u8g2.drawVLine(startX, trackY - 2, 5);
     u8g2.drawVLine(centerX, trackY - 2, 5);
 
-    // Filled dot at the actual servo position (real-time from servo_task)
+    // Filled dot at the actual servo position
     int dotX = map(constrain(servoActual, 0, 100), 0, 100, trackL, trackR);
     u8g2.drawDisc(dotX, trackY, 2);
   }
 
-  // Encoder 1: Actuator
+  // Encoder 1: Actuator — Row at y=20, text baseline y=26
   snprintf(statusBuffer, sizeof(statusBuffer), "S1:Act:%03d%%", actuatorTarget);
-  u8g2.drawStr(0, 24, statusBuffer);
+  u8g2.drawStr(0, 26, statusBuffer);
 
-  if (actuatorTarget > 50) {
-    u8g2.drawTriangle(75, 18, 71, 24, 79, 24); // UP
-  } else if (actuatorTarget < 50) {
-    u8g2.drawTriangle(75, 24, 71, 18, 79, 18); // DOWN
-  } else {
-    u8g2.drawDisc(75, 21, 2); // Center dot
+  // Fill bar: frame from x=72 to x=124, height 7
+  {
+    const int barL = 72, barW = 52, barY = 20, barH = 7;
+    u8g2.drawFrame(barL, barY, barW, barH);
+    int fillW = map(constrain(actuatorActual, 0, 100), 0, 100, 0, barW - 2);
+    if (fillW > 0) {
+      u8g2.drawBox(barL + 1, barY + 1, fillW, barH - 2);
+    }
   }
 
-  // Encoder 2: Motor
+  // Encoder 2: Motor — Row at y=29, text baseline y=35
   int step = motorTarget / MOTOR_SPEED_SCALE_FACTOR;
   snprintf(statusBuffer, sizeof(statusBuffer), "S2:Mot:%+03d", step);
-  u8g2.drawStr(0, 32, statusBuffer);
+  u8g2.drawStr(0, 35, statusBuffer);
 
-  u8g2.drawFrame(51, 25, 69, 9);
-  u8g2.drawLine(85, 25, 85, 33);
+  // Bidirectional speed bar: frame from x=72 to x=124, height 7, center line
+  {
+    const int barL = 72, barW = 52, barY = 29, barH = 7;
+    int centerX = barL + barW / 2;
+    u8g2.drawFrame(barL, barY, barW, barH);
+    u8g2.drawVLine(centerX, barY, barH);
 
-  int clicks = constrain(abs(step), 0, 15);
+    int clicks = constrain(abs(step), 0, 15);
+    int fillW = map(clicks, 0, 15, 0, (barW / 2) - 1);
 
-  if (motorTarget > 0) {
-    u8g2.drawBox(87, 27, clicks * 2, 5);
-  } else if (motorTarget < 0) {
-    u8g2.drawBox(83 - (clicks * 2), 27, clicks * 2, 5);
+    if (motorTarget > 0) {
+      u8g2.drawBox(centerX + 1, barY + 1, fillW, barH - 2);
+    } else if (motorTarget < 0) {
+      u8g2.drawBox(centerX - fillW, barY + 1, fillW, barH - 2);
+    }
+
+    if (motorTarget == 0 && currentMode != IDLE) {
+      u8g2.drawStr(centerX + 2, 35, "[P]");
+    }
   }
 
-  if (motorTarget == 0 && currentMode != IDLE) {
-    u8g2.drawStr(88, 32, "[P]");
-  }
-
-  // Encoder 3: StallGuard threshold + flags
+  // Encoder 3: StallGuard — Row at y=38, text baseline y=44
   snprintf(statusBuffer, sizeof(statusBuffer), "S3:SG:%03d", sgThreshold);
-  u8g2.drawStr(0, 40, statusBuffer);
+  u8g2.drawStr(0, 44, statusBuffer);
   if (isHoming)
-    u8g2.drawStr(72, 40, "[H]");
+    u8g2.drawStr(72, 44, "[H]");
   else if (sgDiagMode)
-    u8g2.drawStr(72, 40, "[D]");
+    u8g2.drawStr(72, 44, "[D]");
   else if (triggerHoming)
-    u8g2.drawStr(72, 40, "[*]");
+    u8g2.drawStr(72, 44, "[*]");
 }
 
 static void draw_actionMessage() {

@@ -39,6 +39,7 @@ struct SystemState {
   // Linear Actuator
   ActuatorDirection actuatorDir;
   int actuatorTargetPercent;
+  int actuatorPercent; // Actual physical position (updated by actuator_task)
 
   // Stepper Motor
   int actualSpeed;

@@ -22,6 +22,7 @@ SystemState systemState = {.mode = IDLE,
                            .servoCalStep = CAL_OFF,
                            .actuatorDir = ACT_STOP,
                            .actuatorTargetPercent = 0,
+                           .actuatorPercent = 0,
                            .actualSpeed = 0,
                            .targetSpeed = 0,
                            .isHoming = false,
@@ -54,12 +55,14 @@ void initSystemState() {
 }
 
 void saveMotorState() {
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
     preferences.putBool("isHomed", systemState.isHomed);
     preferences.putFloat("pos", systemState.currentPosition);
     xSemaphoreGive(systemStateMutex);
+    Serial.println("--- Saved Motor State to NVS ---");
+  } else {
+    ESP_LOGW("CTRL", "saveMotorState mutex timeout, skipping");
   }
-  Serial.println("--- Saved Motor State to NVS ---");
 }
 
 void saveServoCalibration() {
