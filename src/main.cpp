@@ -36,7 +36,7 @@ void setup() {
   xTaskCreate(actuator_task, "Actuator", 4096, NULL, 2, NULL);
   xTaskCreate(servo_task, "Servo", 4096, &servo_interval, 2, NULL);
 
-  xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 1, NULL);
+  xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 2, NULL);
 }
 
 void loop() {

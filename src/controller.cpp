@@ -1,6 +1,7 @@
 #include "controller.h"
 #include "drivers/EncoderDriver.h"
 #include "drivers/LCDDriver.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <Preferences.h>

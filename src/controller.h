@@ -38,8 +38,8 @@ struct SystemState {
   int actualSpeed;
   int targetSpeed;
 
-  volatile bool isHoming;
-  volatile bool sgDiagMode;
+  bool isHoming;
+  bool sgDiagMode;
 
   // StallGuard Threshold for live tuning
   int sgThreshold;
@@ -50,8 +50,8 @@ struct SystemState {
   int motorEncoderLimit;
 
   // Collision Detection
-  volatile bool collisionDetected;
-  volatile uint32_t collisionTimestamp;
+  bool collisionDetected;
+  uint32_t collisionTimestamp;
 };
 
 extern SystemState systemState;
