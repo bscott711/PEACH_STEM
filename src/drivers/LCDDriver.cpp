@@ -73,13 +73,16 @@ static void draw_displayTimer() {
 }
 
 static void draw_buttonStatus() {
-  bool localLongPressed[4] = {false};
   uint32_t localBtnTime[4] = {0};
 
-  // 1. Grab encoder state (higher priority mutex)
+  // 1. Grab encoder state: clear long-press flags and record press time
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
     for (int i = 0; i < 4; i++) {
-      localLongPressed[i] = g_encoderState.buttonLongPressed[i];
+      if (g_encoderState.buttonLongPressed[i]) {
+        g_encoderState.buttonLongPressed[i] = false;
+        // Notify LCD so the icon flashes briefly, same as short press
+        LCD_notifyButtonPress(i);
+      }
     }
     xSemaphoreGive(encoderStateMutex);
   } else {
@@ -100,9 +103,8 @@ static void draw_buttonStatus() {
   // 3. Render using local copies (no mutexes held during drawing)
   for (int i = 0; i < 4; i++) {
     bool recentlyPressed = (now - localBtnTime[i] < 200);
-    bool pressed = recentlyPressed || localLongPressed[i];
 
-    if (pressed) {
+    if (recentlyPressed) {
       u8g2.drawDisc(100 + (i * 6), 4, 2); // filled = pressed
     } else {
       u8g2.drawCircle(100 + (i * 6), 4, 2); // outline = unpressed
