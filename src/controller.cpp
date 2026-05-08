@@ -17,6 +17,9 @@ SystemState systemState = {.mode = IDLE,
                            .servoAdjustMode = true,
                            .servoPercent = 0,
                            .servoTargetPercent = 0,
+                           .servoCalStart = 0,
+                           .servoCalCenter = 50,
+                           .servoCalStep = CAL_OFF,
                            .actuatorDir = ACT_STOP,
                            .actuatorTargetPercent = 0,
                            .actualSpeed = 0,
@@ -44,6 +47,8 @@ void initSystemState() {
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
     systemState.isHomed = preferences.getBool("isHomed", false);
     systemState.currentPosition = preferences.getFloat("pos", 0.0f);
+    systemState.servoCalStart = preferences.getInt("srvStart", 0);
+    systemState.servoCalCenter = preferences.getInt("srvCenter", 50);
     xSemaphoreGive(systemStateMutex);
   }
 }
@@ -57,6 +62,15 @@ void saveMotorState() {
   Serial.println("--- Saved Motor State to NVS ---");
 }
 
+void saveServoCalibration() {
+  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+    preferences.putInt("srvStart", systemState.servoCalStart);
+    preferences.putInt("srvCenter", systemState.servoCalCenter);
+    xSemaphoreGive(systemStateMutex);
+  }
+  Serial.println("--- Saved Servo Calibration to NVS ---");
+}
+
 // ------------------------------------------------------------------------
 // Sub-Handlers for Controller Readability
 // ------------------------------------------------------------------------
@@ -64,6 +78,7 @@ void saveMotorState() {
 static void handleServoEncoder() {
   int32_t currentPos = 0;
   bool btnPressed = false;
+  bool longPressed = false;
 
   // 1. Thread-safe copy and clear
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -73,12 +88,92 @@ static void handleServoEncoder() {
 
     if (g_encoderState.buttonPressed[0]) {
       btnPressed = true;
-      g_encoderState.buttonPressed[0] = false; // Clear immediately
+      g_encoderState.buttonPressed[0] = false;
+    }
+    if (g_encoderState.buttonLongPressed[0]) {
+      longPressed = true;
+      g_encoderState.buttonLongPressed[0] = false;
     }
     xSemaphoreGive(encoderStateMutex);
   }
 
-  // 2. Process logic safely
+  // Read current calibration state
+  ServoCalibrationStep calStep = CAL_OFF;
+  int calStart = 0, calCenter = 50;
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    calStep = systemState.servoCalStep;
+    calStart = systemState.servoCalStart;
+    calCenter = systemState.servoCalCenter;
+    xSemaphoreGive(systemStateMutex);
+  }
+
+  // 2. Long press: enter calibration mode (only from CAL_OFF)
+  if (longPressed && calStep == CAL_OFF) {
+    LCD_notifyButtonPress(0);
+    LCD_setMessage("CAL: Set START");
+    printf("Entering Servo Calibration Mode\n");
+
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      systemState.servoCalStep = CAL_SET_START;
+      xSemaphoreGive(systemStateMutex);
+    }
+    return;
+  }
+
+  // 3. Calibration mode logic
+  if (calStep != CAL_OFF) {
+    // In calibration: encoder freely moves servo across full range
+    static int32_t calD0 = 0;
+    if (calD0 != currentPos) {
+      calD0 = currentPos;
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        systemState.servoTargetPercent = calD0;
+        xSemaphoreGive(systemStateMutex);
+      }
+    }
+
+    if (btnPressed) {
+      LCD_notifyButtonPress(0);
+
+      if (calStep == CAL_SET_START) {
+        // Save start position, advance to center
+        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+          systemState.servoCalStart = currentPos;
+          systemState.servoCalStep = CAL_SET_CENTER;
+          xSemaphoreGive(systemStateMutex);
+        }
+        LCD_setMessage("CAL: Set CENTER");
+        printf("Servo CAL: Start=%d, now set center\n", (int)currentPos);
+
+      } else if (calStep == CAL_SET_CENTER) {
+        // Save center position, persist to NVS, exit calibration
+        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+          systemState.servoCalCenter = currentPos;
+          systemState.servoCalStep = CAL_OFF;
+          xSemaphoreGive(systemStateMutex);
+        }
+        saveServoCalibration();
+        LCD_setMessage("CAL: Saved!");
+        printf("Servo CAL: Center=%d, calibration saved\n", (int)currentPos);
+
+        // Reset encoder position to the start position for normal operation
+        int savedStart = 0;
+        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+          savedStart = systemState.servoCalStart;
+          systemState.servoTargetPercent = savedStart;
+          xSemaphoreGive(systemStateMutex);
+        }
+        if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+          g_encoderState.position[0] = savedStart;
+          xSemaphoreGive(encoderStateMutex);
+        }
+        calD0 = savedStart;
+      }
+    }
+    return; // Skip normal mode processing while calibrating
+  }
+
+  // 4. Normal mode: encoder adjusts servo target
   static int32_t d0 = 0;
   if (d0 != currentPos) {
     d0 = currentPos;
@@ -90,6 +185,7 @@ static void handleServoEncoder() {
     LCD_setMessage("Servo Adjusted");
   }
 
+  // 5. Short press: toggle between saved start and center positions
   if (btnPressed) {
     LCD_notifyButtonPress(0);
 
@@ -99,11 +195,11 @@ static void handleServoEncoder() {
       xSemaphoreGive(systemStateMutex);
     }
 
-    int newTarget = (currentTarget < SERVO_CENTER_PERCENT)
-                        ? SERVO_CENTER_PERCENT
-                        : SERVO_MIN_PERCENT;
-    LCD_setMessage(newTarget == SERVO_CENTER_PERCENT ? "Servo: Center"
-                                                     : "Servo: Start");
+    // Toggle: go to whichever saved position we're furthest from
+    int distToStart = abs(currentTarget - calStart);
+    int distToCenter = abs(currentTarget - calCenter);
+    int newTarget = (distToStart <= distToCenter) ? calCenter : calStart;
+    LCD_setMessage(newTarget == calCenter ? "Servo: Center" : "Servo: Start");
 
     if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
       g_encoderState.position[0] = newTarget;

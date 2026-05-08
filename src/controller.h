@@ -21,6 +21,7 @@
 
 enum DeviceMode { IDLE, PICKUP_CELL, DROPOFF_CELL };
 enum ActuatorDirection { ACT_STOP = 0, ACT_FORWARD, ACT_REVERSE };
+enum ServoCalibrationStep { CAL_OFF, CAL_SET_START, CAL_SET_CENTER };
 
 struct SystemState {
   DeviceMode mode;
@@ -29,6 +30,11 @@ struct SystemState {
   bool servoAdjustMode;
   int servoPercent;
   int servoTargetPercent;
+
+  // Servo Calibration (NVS-persisted)
+  int servoCalStart;  // Raw percent for "start" position
+  int servoCalCenter; // Raw percent for "center" position
+  ServoCalibrationStep servoCalStep;
 
   // Linear Actuator
   ActuatorDirection actuatorDir;
@@ -61,6 +67,7 @@ extern EventGroupHandle_t controlEvents;
 
 void initSystemState();
 void saveMotorState();
+void saveServoCalibration();
 
 // FreeRTOS task entries
 void controller_task(void *pvParameters);

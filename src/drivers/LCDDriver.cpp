@@ -117,21 +117,27 @@ static void draw_encoderStatus() {
   bool staleData = false;
 
   // Static caches so the UI doesn't zero out if the mutex times out
-  static int servoTarget = 0, actuatorTarget = 0, motorTarget = 0,
-             sgThreshold = 16;
+  static int servoTarget = 0, servoActual = 0, actuatorTarget = 0,
+             motorTarget = 0, sgThreshold = 16;
+  static int servoCalStart = 0, servoCalCenter = 50;
   static DeviceMode currentMode = IDLE;
   static bool isHoming = false, sgDiagMode = false;
+  static ServoCalibrationStep servoCalStep = CAL_OFF;
 
   bool triggerHoming = false;
 
   if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
     servoTarget = systemState.servoTargetPercent;
+    servoActual = systemState.servoPercent;
     actuatorTarget = systemState.actuatorTargetPercent;
     motorTarget = systemState.targetSpeed;
     sgThreshold = systemState.sgThreshold;
     currentMode = systemState.mode;
     isHoming = systemState.isHoming;
     sgDiagMode = systemState.sgDiagMode;
+    servoCalStep = systemState.servoCalStep;
+    servoCalStart = systemState.servoCalStart;
+    servoCalCenter = systemState.servoCalCenter;
     xSemaphoreGive(systemStateMutex);
   } else {
     staleData = true;
@@ -148,14 +154,32 @@ static void draw_encoderStatus() {
   }
 
   // Encoder 0: Servo
-  snprintf(statusBuffer, sizeof(statusBuffer), "S0:Srv:%03d%%", servoTarget);
-  u8g2.drawStr(0, 16, statusBuffer);
-  if (servoTarget > 50)
-    u8g2.drawStr(72, 16, "------->");
-  else if (servoTarget < 50)
-    u8g2.drawStr(72, 16, "<-------");
-  else
-    u8g2.drawStr(72, 16, "--- O ---");
+  if (servoCalStep == CAL_SET_START) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S0:CAL START:%03d%%",
+             servoTarget);
+    u8g2.drawStr(0, 16, statusBuffer);
+  } else if (servoCalStep == CAL_SET_CENTER) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S0:CAL CTR:%03d%%",
+             servoTarget);
+    u8g2.drawStr(0, 16, statusBuffer);
+  } else {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S0:Srv:%03d%%", servoTarget);
+    u8g2.drawStr(0, 16, statusBuffer);
+
+    // Live sliding dot: track from x=72 to x=124, y centered at 13
+    const int trackL = 72, trackR = 124, trackY = 13;
+    u8g2.drawHLine(trackL, trackY, trackR - trackL);
+
+    // Tick marks at calibrated start and center positions
+    int startX = map(constrain(servoCalStart, 0, 100), 0, 100, trackL, trackR);
+    int centerX = map(constrain(servoCalCenter, 0, 100), 0, 100, trackL, trackR);
+    u8g2.drawVLine(startX, trackY - 2, 5);
+    u8g2.drawVLine(centerX, trackY - 2, 5);
+
+    // Filled dot at the actual servo position (real-time from servo_task)
+    int dotX = map(constrain(servoActual, 0, 100), 0, 100, trackL, trackR);
+    u8g2.drawDisc(dotX, trackY, 2);
+  }
 
   // Encoder 1: Actuator
   snprintf(statusBuffer, sizeof(statusBuffer), "S1:Act:%03d%%", actuatorTarget);
