@@ -378,12 +378,13 @@ static void handleAutonomousEncoder() {
     }
   }
 
-  // 3. Short Press: Launch or Resume Autonomous Sequence
+  // 3. Short Press: Launch, Resume, or E-STOP
   if (shortPress) {
     LCD_notifyButtonPress(3);
 
     EventBits_t events = xEventGroupGetBits(controlEvents);
     if (!(events & BIT_AUTO_RUNNING)) {
+      // No sequence running — launch a new one
       TaskHandle_t autoTaskHandle = NULL;
       if (xTaskCreate(autonomous_task, "AutoTask", 4096, NULL, 2,
                       &autoTaskHandle) == pdPASS) {
@@ -393,9 +394,13 @@ static void handleAutonomousEncoder() {
         ESP_LOGE("CTRL", "Failed to create autonomous_task");
       }
     } else {
-      // If sequence is active and waiting for user input, this triggers the
-      // resume
-      xEventGroupSetBits(controlEvents, BIT_AUTO_RESUME);
+      // Sequence IS running — context-dependent action:
+      // BIT_AUTO_RESUME is used by SEQ_WAIT_USER to continue.
+      // If the sequence is NOT waiting, this acts as an E-STOP.
+      // We fire both bits — the engine checks ESTOP first.
+      xEventGroupSetBits(controlEvents,
+                         BIT_AUTO_RESUME | BIT_ESTOP_REQUEST);
+      LCD_setMessage("Auto: STOPPING...");
     }
   }
 }
@@ -425,141 +430,232 @@ void controller_task(void *pvParameters) {
 }
 
 void autonomous_task(void *pvParameters) {
+  // ---- Sequence Blueprint ----
+  // Read calibration values for servo positions
+  int calStart = 0, calCenter = 50;
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    calStart = systemState.servoCalStart;
+    calCenter = systemState.servoCalCenter;
+    xSemaphoreGive(systemStateMutex);
+  }
+
+  // clang-format off
+  const SequenceStep peachSequence[] = {
+    // --- Initialize ---
+    {SEQ_MOVE_SERVO,    calStart, 0,              "Auto: Servo Start"},
+    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Retract"},
+    {SEQ_WAIT_MS,       2500,     0,              NULL},
+
+    // --- Move up to clearance height ---
+    {SEQ_MOVE_Z,        0,        Z_CLEARANCE_POS, "Auto: Moving Up"},
+    {SEQ_WAIT_MS,       500,      0,               NULL},
+    {SEQ_WAIT_USER,     0,        0,               "Press Btn to Continue"},
+
+    // --- Position servo and descend to tube ---
+    {SEQ_MOVE_SERVO,    calStart, 0,               "Auto: Servo Start"},
+    {SEQ_WAIT_MS,       2500,     0,               NULL},
+    {SEQ_MOVE_Z,        0,        Z_TUBE_POS,      "Auto: Down to Tube"},
+    {SEQ_WAIT_MS,       500,      0,               NULL},
+
+    // --- Aspiration mixing (3 cycles) ---
+    {SEQ_MOVE_ACTUATOR, 80,       0,               "Auto: Aspiration 1"},
+    {SEQ_WAIT_MS,       750,      0,               NULL},
+    {SEQ_MOVE_ACTUATOR, 0,        0,               NULL},
+    {SEQ_WAIT_MS,       750,      0,               NULL},
+    {SEQ_MOVE_ACTUATOR, 80,       0,               "Auto: Aspiration 2"},
+    {SEQ_WAIT_MS,       750,      0,               NULL},
+    {SEQ_MOVE_ACTUATOR, 0,        0,               NULL},
+    {SEQ_WAIT_MS,       750,      0,               NULL},
+    {SEQ_MOVE_ACTUATOR, 80,       0,               "Auto: Aspiration 3"},
+    {SEQ_WAIT_MS,       750,      0,               NULL},
+    {SEQ_MOVE_ACTUATOR, 0,        0,               NULL},
+    {SEQ_WAIT_MS,       750,      0,               NULL},
+
+    // --- Pickup cells ---
+    {SEQ_MOVE_ACTUATOR, 100,      0,               "Auto: Pickup Cells"},
+    {SEQ_WAIT_MS,       500,      0,               NULL},
+    {SEQ_MOVE_ACTUATOR, 0,        0,               NULL},
+    {SEQ_WAIT_MS,       1000,     0,               NULL},
+
+    // --- Retract up and rotate to microscope ---
+    {SEQ_MOVE_Z,        0,        Z_CLEARANCE_POS, "Auto: Moving Up"},
+    {SEQ_WAIT_MS,       500,      0,               NULL},
+    {SEQ_MOVE_SERVO,    calCenter, 0,              "Auto: To Microscope"},
+    {SEQ_WAIT_MS,       1000,     0,               NULL},
+
+    // --- Descend to microscope position ---
+    {SEQ_MOVE_Z,        0,        Z_TUBE_POS,      "Auto: Descending"},
+    {SEQ_WAIT_MS,       500,      0,               NULL},
+
+    // --- Drop cells ---
+    {SEQ_MOVE_ACTUATOR, 100,      0,               "Auto: Dropping Cells"},
+    {SEQ_WAIT_MS,       1000,     0,               NULL},
+
+    // --- Retract and return home ---
+    {SEQ_MOVE_Z,        0,        Z_CLEARANCE_POS, "Auto: Retreating"},
+    {SEQ_WAIT_MS,       500,      0,               NULL},
+    {SEQ_MOVE_ACTUATOR, 0,        0,               "Auto: Reset Actuator"},
+    {SEQ_MOVE_SERVO,    calStart, 0,               "Auto: Reset Servo"},
+    {SEQ_MOVE_Z,        0,        Z_TUBE_POS,      "Auto: Return Home"},
+  };
+  // clang-format on
+
+  const int numSteps = sizeof(peachSequence) / sizeof(peachSequence[0]);
+
   LCD_setMessage("Auto Sequence Start");
-  printf("Starting Autonomous Sequence...\n");
+  printf("Starting Autonomous Sequence (%d steps)...\n", numSteps);
 
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = 0;
-    systemState.actuatorTargetPercent = 0;
-    systemState.servoTargetPercent = 0;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(2500));
+  bool aborted = false;
 
-  LCD_setMessage("Auto: Moving Away");
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = AUTO_SEQUENCE_SPEED;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(AUTO_SEQUENCE_DURATION_MS));
+  // ---- Sequence Engine ----
+  for (int i = 0; i < numSteps && !aborted; i++) {
+    const SequenceStep &step = peachSequence[i];
 
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = 0;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(500));
-
-  LCD_setMessage("Press Btn to Continue");
-
-  // Wait indefinitely for the user to press the button (which fires
-  // BIT_AUTO_RESUME) pdTRUE automatically clears the bit so it doesn't trigger
-  // again immediately
-  xEventGroupWaitBits(controlEvents, BIT_AUTO_RESUME, pdTRUE, pdFALSE,
-                      portMAX_DELAY);
-
-  LCD_setMessage("Auto: Resuming");
-
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.servoTargetPercent = 0;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(2500));
-
-  LCD_setMessage("Auto: Down to Tube");
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = -AUTO_SEQUENCE_SPEED;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(AUTO_SEQUENCE_DURATION_MS));
-
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = 0;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(500));
-
-  LCD_setMessage("Auto: Aspiration");
-  for (int i = 0; i < 3; i++) {
-    if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-      systemState.actuatorTargetPercent = 80;
-      xSemaphoreGive(systemStateMutex);
+    // Display step message on LCD if provided
+    if (step.message != NULL) {
+      LCD_setMessage(step.message);
+      printf("[Step %d/%d] %s\n", i + 1, numSteps, step.message);
     }
-    vTaskDelay(pdMS_TO_TICKS(750));
 
-    if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+    switch (step.action) {
+
+    case SEQ_MOVE_Z: {
+      // Deterministic Z-axis positioning using virtual position tracking
+      float currentPos = 0.0f;
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        currentPos = systemState.currentPosition;
+        xSemaphoreGive(systemStateMutex);
+      }
+
+      // Set direction based on whether we need to go up or down
+      int velocity =
+          (step.zTarget > currentPos) ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
+      bool goingUp = (velocity > 0);
+
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        systemState.targetSpeed = velocity;
+        xSemaphoreGive(systemStateMutex);
+      }
+
+      // Poll position until we reach the target, checking for E-STOP
+      while (true) {
+        EventBits_t ev = xEventGroupGetBits(controlEvents);
+        if (ev & BIT_ESTOP_REQUEST) {
+          aborted = true;
+          break;
+        }
+
+        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+          currentPos = systemState.currentPosition;
+          xSemaphoreGive(systemStateMutex);
+        }
+
+        // Check if we've crossed the target threshold
+        if (goingUp && currentPos >= step.zTarget)
+          break;
+        if (!goingUp && currentPos <= step.zTarget)
+          break;
+
+        vTaskDelay(pdMS_TO_TICKS(10));
+      }
+
+      // Stop the motor
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        systemState.targetSpeed = 0;
+        xSemaphoreGive(systemStateMutex);
+      }
+
+      // Back-sync encoder 2 (motor) to 0
+      if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        g_encoderState.position[2] = 0;
+        xSemaphoreGive(encoderStateMutex);
+      }
+      break;
+    }
+
+    case SEQ_MOVE_SERVO: {
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        systemState.servoTargetPercent = step.target;
+        xSemaphoreGive(systemStateMutex);
+      }
+
+      // UI Back-Sync: update encoder 0 so manual controls stay in sync
+      if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        g_encoderState.position[0] = step.target;
+        xSemaphoreGive(encoderStateMutex);
+      }
+      break;
+    }
+
+    case SEQ_MOVE_ACTUATOR: {
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        systemState.actuatorTargetPercent = step.target;
+        xSemaphoreGive(systemStateMutex);
+      }
+
+      // UI Back-Sync: update encoder 1 so manual controls stay in sync
+      if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        g_encoderState.position[1] = step.target;
+        xSemaphoreGive(encoderStateMutex);
+      }
+      break;
+    }
+
+    case SEQ_WAIT_MS: {
+      // Interruptible delay: yield in 10ms chunks, checking for E-STOP
+      int elapsed = 0;
+      while (elapsed < step.target) {
+        EventBits_t ev = xEventGroupGetBits(controlEvents);
+        if (ev & BIT_ESTOP_REQUEST) {
+          aborted = true;
+          break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+        elapsed += 10;
+      }
+      break;
+    }
+
+    case SEQ_WAIT_USER: {
+      // Wait for user button press OR E-STOP
+      // Check RESUME before ESTOP so pressing the button at a prompt resumes
+      while (true) {
+        EventBits_t ev = xEventGroupWaitBits(
+            controlEvents, BIT_AUTO_RESUME | BIT_ESTOP_REQUEST, pdTRUE,
+            pdFALSE, pdMS_TO_TICKS(100));
+
+        if (ev & BIT_AUTO_RESUME) {
+          // Clear any spurious ESTOP that arrived with the resume
+          xEventGroupClearBits(controlEvents, BIT_ESTOP_REQUEST);
+          LCD_setMessage("Auto: Resuming");
+          break;
+        }
+        if (ev & BIT_ESTOP_REQUEST) {
+          aborted = true;
+          break;
+        }
+      }
+      break;
+    }
+
+    } // end switch
+  }   // end for
+
+  // ---- Cleanup ----
+  if (aborted) {
+    // E-STOP: halt everything immediately
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+      systemState.targetSpeed = 0;
       systemState.actuatorTargetPercent = 0;
       xSemaphoreGive(systemStateMutex);
     }
-    vTaskDelay(pdMS_TO_TICKS(750));
+    LCD_setMessage("Auto: E-STOPPED");
+    printf("!!! Autonomous Sequence E-STOPPED !!!\n");
+    xEventGroupClearBits(controlEvents, BIT_ESTOP_REQUEST);
+  } else {
+    LCD_setMessage("Auto: Complete");
+    printf("Autonomous Sequence Complete.\n");
   }
-
-  LCD_setMessage("Auto: Pickup Cells");
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.actuatorTargetPercent = 100;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(500));
-
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.actuatorTargetPercent = 0;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(1000));
-
-  LCD_setMessage("Auto: Moving Up");
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = AUTO_SEQUENCE_SPEED;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(AUTO_SEQUENCE_DURATION_MS));
-
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = 0;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(500));
-
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.servoTargetPercent = 30;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(1000));
-
-  LCD_setMessage("Auto: To Microscope");
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = -AUTO_SEQUENCE_SPEED;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(AUTO_SEQUENCE_DURATION_MS));
-
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = 0;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(500));
-
-  LCD_setMessage("Auto: Dropping Cells");
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.actuatorTargetPercent = 100;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(1000));
-
-  LCD_setMessage("Auto: Retreating");
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = AUTO_SEQUENCE_SPEED;
-    xSemaphoreGive(systemStateMutex);
-  }
-  vTaskDelay(pdMS_TO_TICKS(AUTO_SEQUENCE_DURATION_MS));
-
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    systemState.targetSpeed = 0;
-    systemState.actuatorTargetPercent = 0;
-    xSemaphoreGive(systemStateMutex);
-  }
-
-  LCD_setMessage("Auto: Complete");
-  vTaskDelay(pdMS_TO_TICKS(500));
 
   // Clear the running flag and delete self
   xEventGroupClearBits(controlEvents, BIT_AUTO_RUNNING);

@@ -14,14 +14,36 @@
 #define SERVO_MAX_PERCENT 100
 #define ACTUATOR_STEP_PERCENT 10
 
+// Z-axis position targets (in currentPosition units)
+// Derived from speed=120000, time=15s, factor=1.372e-6 ≈ 2.47
+#define Z_CLEARANCE_POS 2.5f
+#define Z_TUBE_POS 0.0f
+
 // --- Event Group Bits ---
 #define BIT_HOMING_REQUEST (1 << 0)
 #define BIT_AUTO_RUNNING (1 << 1)
 #define BIT_AUTO_RESUME (1 << 2)
+#define BIT_ESTOP_REQUEST (1 << 3)
 
 enum DeviceMode { IDLE, PICKUP_CELL, DROPOFF_CELL };
 enum ActuatorDirection { ACT_STOP = 0, ACT_FORWARD, ACT_REVERSE };
 enum ServoCalibrationStep { CAL_OFF, CAL_SET_START, CAL_SET_CENTER };
+
+// --- Sequence Engine Types ---
+enum SequenceAction {
+  SEQ_MOVE_Z,        // Move Z-axis to target position (deterministic)
+  SEQ_MOVE_SERVO,    // Set servo to target percent
+  SEQ_MOVE_ACTUATOR, // Set actuator to target percent
+  SEQ_WAIT_MS,       // Interruptible delay (target = milliseconds)
+  SEQ_WAIT_USER      // Wait for user button press to continue
+};
+
+struct SequenceStep {
+  SequenceAction action;
+  int target;          // Position/percent/ms depending on action
+  float zTarget;       // Z-position target (only for SEQ_MOVE_Z)
+  const char *message; // LCD message (NULL = no update)
+};
 
 struct SystemState {
   DeviceMode mode;
