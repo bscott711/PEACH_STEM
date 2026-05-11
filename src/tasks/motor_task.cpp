@@ -7,8 +7,6 @@ static motorDriver motor;
 // Homing State Machine Tracker
 enum HomingState { H_IDLE, H_MOVING, H_BLIND_WAIT, H_POLLING };
 static HomingState homingState = H_IDLE;
-static TickType_t homingStartTime = 0;
-const TickType_t HOMING_TIMEOUT_MS = 10000; // 10 second timeout failsafe
 
 void motor_task(void *parameter) {
   int interval = *(int *)parameter;
@@ -145,36 +143,31 @@ void motor_task(void *parameter) {
         }
       }
 
-      int limitsSetCount = 0;
-      float limBot = 1e9f;
-      float limTop = -1e9f;
+      bool botSet = false, topSet = false;
+      float limBot = 0.0f, limTop = 0.0f;
 
       if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-        for (int i = 0; i < 3; i++) {
-          if (systemState.motorLimitSet[i]) {
-            limitsSetCount++;
-            if (systemState.motorLimits[i] < limBot) limBot = systemState.motorLimits[i];
-            if (systemState.motorLimits[i] > limTop) limTop = systemState.motorLimits[i];
-          }
-        }
+        botSet = systemState.motorLimitSet[0];
+        limBot = systemState.motorLimits[0];
+        
+        topSet = systemState.motorLimitSet[2];
+        limTop = systemState.motorLimits[2];
         xSemaphoreGive(systemStateMutex);
       }
 
-      if (limitsSetCount >= 2 && limTop > limBot) {
-        if (currentPos <= limBot && targetSpeed < 0) {
-          targetSpeed = 0;
-          LCD_setMessage("Bottom Reached");
-          if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-            systemState.targetSpeed = 0;
-            xSemaphoreGive(systemStateMutex);
-          }
-        } else if (currentPos >= limTop && targetSpeed > 0) {
-          targetSpeed = 0;
-          LCD_setMessage("Top Reached");
-          if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-            systemState.targetSpeed = 0;
-            xSemaphoreGive(systemStateMutex);
-          }
+      if (botSet && currentPos <= limBot && targetSpeed < 0) {
+        targetSpeed = 0;
+        LCD_setMessage("Bottom Reached");
+        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+          systemState.targetSpeed = 0;
+          xSemaphoreGive(systemStateMutex);
+        }
+      } else if (topSet && currentPos >= limTop && targetSpeed > 0) {
+        targetSpeed = 0;
+        LCD_setMessage("Top Reached");
+        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+          systemState.targetSpeed = 0;
+          xSemaphoreGive(systemStateMutex);
         }
       } else if (isHomed && currentPos <= 0.0f && targetSpeed < 0) {
         targetSpeed = 0;

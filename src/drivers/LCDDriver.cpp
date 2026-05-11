@@ -145,10 +145,11 @@ static void draw_buttonStatus() {
         // Notify LCD so the icon flashes briefly, same as short press
         LCD_notifyButtonPress(i);
       }
-      
+
       // Live feedback for held buttons
       if (g_encoderState.buttonHeld[i]) {
-        uint32_t duration = now - (g_encoderState.buttonPressTime[i] * portTICK_PERIOD_MS);
+        uint32_t duration =
+            now - (g_encoderState.buttonPressTime[i] * portTICK_PERIOD_MS);
         if (duration >= 2500) {
           LCD_setMessage("Very Long Press");
         } else if (duration >= 800) {
@@ -188,21 +189,17 @@ static void draw_buttonStatus() {
 
 static void draw_encoderStatus() {
   char statusBuffer[32];
-  bool staleData = false;
 
   // Static caches so the UI doesn't zero out if the mutex times out
   static int servoTarget = 0, servoActual = 0, actuatorTarget = 0,
-             actuatorActual = 0, motorTarget = 0, sgThreshold = 16;
+             actuatorActual = 0, motorTarget = 0;
   static int servoCalStart = 0, servoCalCenter = 50;
   static DeviceMode currentMode = IDLE;
-  static bool isHoming = false, sgDiagMode = false;
   static ServoCalibrationStep servoCalStep = CAL_OFF;
   static float motorLimits[3] = {0.0f, 0.0f, 0.0f};
   static bool motorLimitSet[3] = {false, false, false};
   static float currentPos = 0.0f;
   static Enc3Menu enc3MenuSelection = MENU_AUTO;
-
-  bool triggerHoming = false;
 
   if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
     servoTarget = systemState.servoTargetPercent;
@@ -210,13 +207,11 @@ static void draw_encoderStatus() {
     actuatorTarget = systemState.actuatorTargetPercent;
     actuatorActual = systemState.actuatorPercent;
     motorTarget = systemState.targetSpeed;
-    sgThreshold = systemState.sgThreshold;
     currentMode = systemState.mode;
-    isHoming = systemState.isHoming;
     servoCalStep = systemState.servoCalStep;
     servoCalStart = systemState.servoCalStart;
     servoCalCenter = systemState.servoCalCenter;
-    for (int i=0; i<3; i++) {
+    for (int i = 0; i < 3; i++) {
       motorLimits[i] = systemState.motorLimits[i];
       motorLimitSet[i] = systemState.motorLimitSet[i];
     }
@@ -224,17 +219,7 @@ static void draw_encoderStatus() {
     enc3MenuSelection = systemState.enc3MenuSelection;
     xSemaphoreGive(systemStateMutex);
   } else {
-    staleData = true;
     ESP_LOGW("LCD", "systemStateMutex timeout; showing cached values");
-  }
-
-  // Grab the homing request from the Event Group
-  EventBits_t events = xEventGroupGetBits(controlEvents);
-  triggerHoming = (events & BIT_HOMING_REQUEST) != 0;
-
-  // Draw visual warning if data is stale
-  if (staleData) {
-    u8g2.drawStr(115, 6, "[!]");
   }
 
   // Encoder 0: Servo — Row at y=11, text baseline y=17
@@ -256,11 +241,13 @@ static void draw_encoderStatus() {
 
     // Tick marks at calibrated start and center positions
     if (servoCalStart != -1) {
-      int startX = map(constrain(servoCalStart, 0, 100), 0, 100, trackL, trackR);
+      int startX =
+          map(constrain(servoCalStart, 0, 100), 0, 100, trackL, trackR);
       u8g2.drawVLine(startX, trackY - 2, 5);
     }
     if (servoCalCenter != -1) {
-      int centerX = map(constrain(servoCalCenter, 0, 100), 0, 100, trackL, trackR);
+      int centerX =
+          map(constrain(servoCalCenter, 0, 100), 0, 100, trackL, trackR);
       u8g2.drawVLine(centerX, trackY - 2, 5);
     }
 
@@ -320,35 +307,36 @@ static void draw_encoderStatus() {
   }
   u8g2.drawStr(0, 44, statusBuffer);
 
-  int limitsSetCount = 0;
-  float minLim = 1e9f, maxLim = -1e9f;
-  for (int i=0; i<3; i++) {
-    if (motorLimitSet[i]) {
-        limitsSetCount++;
-        if (motorLimits[i] < minLim) minLim = motorLimits[i];
-        if (motorLimits[i] > maxLim) maxLim = motorLimits[i];
-    }
-  }
+  bool botSet = motorLimitSet[0];
+  bool topSet = motorLimitSet[2];
+  float minLim = motorLimits[0];
+  float maxLim = motorLimits[2];
 
-  if (limitsSetCount >= 2 && maxLim > minLim) {
+  if (botSet && topSet && maxLim > minLim) {
     // Sliding dot UI: track from x=72 to x=124, y centered at 41
     const int trackL = 72, trackR = 124, trackY = 41;
     u8g2.drawHLine(trackL, trackY, trackR - trackL);
-    
+
     float range = maxLim - minLim;
     if (range > 0.01f) {
-      for (int i=0; i<3; i++) {
-         if (motorLimitSet[i]) {
-            int tickX = trackL + (int)(((motorLimits[i] - minLim) / range) * (trackR - trackL));
-            u8g2.drawVLine(tickX, trackY - 2, 5);
-         }
+      for (int i = 0; i < 3; i++) {
+        if (motorLimitSet[i]) {
+          float val = motorLimits[i];
+          if (val < minLim) val = minLim;
+          if (val > maxLim) val = maxLim;
+          int tickX = trackL + (int)(((val - minLim) / range) * (trackR - trackL));
+          u8g2.drawVLine(tickX, trackY - 2, 5);
+        }
       }
-      
+
       float constrainedPos = currentPos;
-      if (constrainedPos < minLim) constrainedPos = minLim;
-      if (constrainedPos > maxLim) constrainedPos = maxLim;
-      
-      int dotX = trackL + (int)(((constrainedPos - minLim) / range) * (trackR - trackL));
+      if (constrainedPos < minLim)
+        constrainedPos = minLim;
+      if (constrainedPos > maxLim)
+        constrainedPos = maxLim;
+
+      int dotX = trackL +
+                 (int)(((constrainedPos - minLim) / range) * (trackR - trackL));
       u8g2.drawDisc(dotX, trackY, 2);
     }
   }
