@@ -143,20 +143,47 @@ void motor_task(void *parameter) {
         }
       }
 
-      bool botSet = false, topSet = false;
-      float limBot = 0.0f, limTop = 0.0f;
+      bool botSet = false, midSet = false, topSet = false;
+      float limBot = 0.0f, limMid = 0.0f, limTop = 0.0f;
+      int servoPercent = 0, servoStart = -1;
 
       if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
         botSet = systemState.motorLimitSet[0];
         limBot = systemState.motorLimits[0];
         
+        midSet = systemState.motorLimitSet[1];
+        limMid = systemState.motorLimits[1];
+
         topSet = systemState.motorLimitSet[2];
         limTop = systemState.motorLimits[2];
+        
+        servoPercent = systemState.servoPercent;
+        servoStart = systemState.servoCalStart;
+
         xSemaphoreGive(systemStateMutex);
       }
 
-      if (botSet && targetSpeed < 0) {
-        float distToBot = currentPos - limBot;
+      bool effectiveBotSet = botSet;
+      float effectiveLimBot = limBot;
+      bool swungOut = (servoStart != -1) && (abs(servoPercent - servoStart) > 5);
+
+      if (swungOut) {
+        if (midSet) {
+          effectiveBotSet = true;
+          effectiveLimBot = limMid;
+        } else if (targetSpeed < 0) {
+          // Option A: If swung out and Mid isn't set, block ALL downward movement to protect the objective!
+          targetSpeed = 0;
+          LCD_setMessage("Servo Out: Mid Not Set!");
+          if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            systemState.targetSpeed = 0;
+            xSemaphoreGive(systemStateMutex);
+          }
+        }
+      }
+
+      if (effectiveBotSet && targetSpeed < 0) {
+        float distToBot = currentPos - effectiveLimBot;
         if (distToBot <= 0.0f) {
           targetSpeed = 0;
           LCD_setMessage("Bottom Reached");

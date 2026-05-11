@@ -12,9 +12,9 @@ SemaphoreHandle_t systemStateMutex;
 SemaphoreHandle_t encoderStateMutex;
 EventGroupHandle_t controlEvents;
 
-// Instantiate Global System State
 SystemState systemState = {.mode = IDLE,
                            .servoAdjustMode = true,
+                           .servoActive = false,
                            .servoPercent = 0,
                            .servoTargetPercent = 0,
                            .servoCalStart = 0,
@@ -78,13 +78,17 @@ void initSystemState() {
     systemState.actuatorLimitSet[1] = preferences.getBool("actS_M", false);
     systemState.actuatorLimitSet[2] = preferences.getBool("actS_T", false);
 
-    // Set servo to the saved start position on boot
-    if (systemState.servoCalStart != -1) {
-      systemState.servoTargetPercent = systemState.servoCalStart;
-      systemState.servoPercent = systemState.servoCalStart;
+    // Servo will remain limp on boot until explicitly activated.
+    systemState.servoActive = false;
+    
+    // Internal position tracking initializes to the safe clearance center position 
+    // to prevent violent snaps when the servo wakes up.
+    if (systemState.servoCalCenter != -1) {
+      systemState.servoTargetPercent = systemState.servoCalCenter;
+      systemState.servoPercent = systemState.servoCalCenter;
     } else {
-      systemState.servoTargetPercent = 0;
-      systemState.servoPercent = 0;
+      systemState.servoTargetPercent = 50; // Default center
+      systemState.servoPercent = 50;
     }
 
     xSemaphoreGive(systemStateMutex);
@@ -216,6 +220,7 @@ static void handleServoEncoder() {
       calD0 = currentPos;
       if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         systemState.servoTargetPercent = calD0;
+        systemState.servoActive = true;
         xSemaphoreGive(systemStateMutex);
       }
     }
@@ -267,6 +272,7 @@ static void handleServoEncoder() {
     d0 = currentPos;
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
       systemState.servoTargetPercent = d0;
+      systemState.servoActive = true;
       xSemaphoreGive(systemStateMutex);
     }
     printf("Servo Percent: %d\n", (int)d0);
@@ -293,14 +299,28 @@ static void handleServoEncoder() {
       int distToStart = abs(currentTarget - calStart);
       int distToCenter = abs(currentTarget - calCenter);
       newTarget = (distToStart <= distToCenter) ? calCenter : calStart;
-      LCD_setMessage(newTarget == calCenter ? "Servo: Center" : "Servo: Start");
     } else if (calStart != -1) {
       newTarget = calStart;
-      LCD_setMessage("Servo: Start");
     } else if (calCenter != -1) {
       newTarget = calCenter;
-      LCD_setMessage("Servo: Center");
     }
+
+    // Interlock: Block movement to Start if Z-axis is not at Top clearance
+    if (newTarget == calStart) {
+      bool atTop = false;
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        // Consider it at Top if it is within 5 units of the Top limit
+        atTop = (systemState.motorLimitSet[2] && systemState.currentPosition >= systemState.motorLimits[2] - 5.0f);
+        xSemaphoreGive(systemStateMutex);
+      }
+      if (!atTop) {
+        LCD_setMessage("Raise Z-Axis First!");
+        printf("Servo Interlock: Blocked move to Start because Z-axis is not at Top.\n");
+        return; // Abort
+      }
+    }
+
+    LCD_setMessage(newTarget == calCenter ? "Servo: Center" : "Servo: Start");
 
     if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
       g_encoderState.position[0] = newTarget;
@@ -310,6 +330,7 @@ static void handleServoEncoder() {
 
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
       systemState.servoTargetPercent = newTarget;
+      systemState.servoActive = true;
       xSemaphoreGive(systemStateMutex);
     }
     printf("Servo Button Pressed. New Pos: %d\n", newTarget);
@@ -773,9 +794,25 @@ void autonomous_task(void *pvParameters) {
 
     case SEQ_MOVE_SERVO: {
       int servoTargetPercent = 0;
+      bool atTop = false;
+
       if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         servoTargetPercent = (step.target == 0) ? systemState.servoCalStart : systemState.servoCalCenter;
+        atTop = (systemState.motorLimitSet[2] && systemState.currentPosition >= systemState.motorLimits[2] - 5.0f);
+        xSemaphoreGive(systemStateMutex);
+      }
+
+      // Interlock
+      if (step.target == 0 && !atTop) {
+        LCD_setMessage("Auto Abort: Z not Top");
+        printf("Autonomous Sequence Aborted: Cannot move servo to Start while Z is not at Top!\n");
+        aborted = true;
+        break;
+      }
+
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         systemState.servoTargetPercent = servoTargetPercent;
+        systemState.servoActive = true;
         xSemaphoreGive(systemStateMutex);
       }
 

@@ -53,6 +53,7 @@ struct SystemState {
 
   // Manual Servo Control
   bool servoAdjustMode;
+  bool servoActive;
   int servoPercent;
   int servoTargetPercent;
 

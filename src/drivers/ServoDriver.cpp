@@ -24,3 +24,7 @@ void ServoDriver_WritePercent(int pct) {
 
   ledcWrite(SERVO_LEDC_CH, duty);
 }
+
+void ServoDriver_Disable() {
+  ledcWrite(SERVO_LEDC_CH, 0); // 0 duty cycle -> limp servo
+}

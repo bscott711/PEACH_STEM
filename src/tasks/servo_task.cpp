@@ -27,9 +27,12 @@ void servo_task(void *pvParameters) {
   while (1) {
     int target_x10 = current_x10;
 
+    bool isActive = false;
+
     // 1. Safely read the target from the global state
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
       target_x10 = systemState.servoTargetPercent * 10;
+      isActive = systemState.servoActive;
       xSemaphoreGive(systemStateMutex);
     } else {
       ESP_LOGW("SERVO", "Mutex timeout reading target");
@@ -44,7 +47,12 @@ void servo_task(void *pvParameters) {
 
     // 3. Command the hardware (convert back from 10x to percent)
     int percent = current_x10 / 10;
-    ServoDriver_WritePercent(percent);
+    
+    if (isActive) {
+      ServoDriver_WritePercent(percent);
+    } else {
+      ServoDriver_Disable(); // Leave servo limp
+    }
 
     // 4. Update the global state with our actual physical position
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
