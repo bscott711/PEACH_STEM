@@ -28,6 +28,8 @@
 enum DeviceMode { IDLE, PICKUP_CELL, DROPOFF_CELL };
 enum ActuatorDirection { ACT_STOP = 0, ACT_FORWARD, ACT_REVERSE };
 enum ServoCalibrationStep { CAL_OFF, CAL_SET_START, CAL_SET_CENTER };
+enum MotorLimitStep { MOTOR_LIMIT_OFF, MOTOR_LIMIT_SET_1, MOTOR_LIMIT_SET_2 };
+
 
 // --- Sequence Engine Types ---
 enum SequenceAction {
@@ -78,6 +80,11 @@ struct SystemState {
   bool isHomed;
   int motorEncoderLimit;
 
+  // Motor Limits
+  MotorLimitStep motorLimitStep;
+  float motorLimitBottom;
+  float motorLimitTop;
+
   // Collision Detection
   bool collisionDetected;
   uint32_t collisionTimestamp;
@@ -90,6 +97,7 @@ extern EventGroupHandle_t controlEvents;
 
 void initSystemState();
 void saveMotorState();
+void saveMotorLimits();
 void saveServoCalibration();
 
 // FreeRTOS task entries

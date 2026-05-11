@@ -54,7 +54,8 @@ void motor_task(void *parameter) {
       Serial.println("--- MOTOR UNLOCKED. ---");
     }
 
-    // --- NON-BLOCKING HOMING TRIGGER ---
+    // --- NON-BLOCKING HOMING TRIGGER (DEACTIVATED) ---
+#if 0
     EventBits_t events = xEventGroupWaitBits(controlEvents, BIT_HOMING_REQUEST,
                                              pdTRUE, pdFALSE, 0);
     if ((events & BIT_HOMING_REQUEST) && homingState == H_IDLE) {
@@ -129,6 +130,7 @@ void motor_task(void *parameter) {
         break;
       }
     }
+#endif
 
     // --- LIVE POSITION TRACKING & LIMITS ---
     // Only execute normal limits and speed logic if NOT homing
@@ -143,7 +145,33 @@ void motor_task(void *parameter) {
         }
       }
 
-      if (isHomed && currentPos <= 0.0f && targetSpeed < 0) {
+      MotorLimitStep step = MOTOR_LIMIT_OFF;
+      float limBot = 0.0f;
+      float limTop = 0.0f;
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        step = systemState.motorLimitStep;
+        limBot = systemState.motorLimitBottom;
+        limTop = systemState.motorLimitTop;
+        xSemaphoreGive(systemStateMutex);
+      }
+
+      if (step == MOTOR_LIMIT_SET_2) {
+        if (currentPos <= limBot && targetSpeed < 0) {
+          targetSpeed = 0;
+          LCD_setMessage("Bottom Reached");
+          if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            systemState.targetSpeed = 0;
+            xSemaphoreGive(systemStateMutex);
+          }
+        } else if (currentPos >= limTop && targetSpeed > 0) {
+          targetSpeed = 0;
+          LCD_setMessage("Top Reached");
+          if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            systemState.targetSpeed = 0;
+            xSemaphoreGive(systemStateMutex);
+          }
+        }
+      } else if (isHomed && currentPos <= 0.0f && targetSpeed < 0) {
         targetSpeed = 0;
         if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
           systemState.targetSpeed = 0;

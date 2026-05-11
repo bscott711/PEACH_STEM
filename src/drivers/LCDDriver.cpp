@@ -184,6 +184,8 @@ static void draw_encoderStatus() {
   static DeviceMode currentMode = IDLE;
   static bool isHoming = false, sgDiagMode = false;
   static ServoCalibrationStep servoCalStep = CAL_OFF;
+  static MotorLimitStep motorLimitStep = MOTOR_LIMIT_OFF;
+  static float motorLimitBot = 0.0f, motorLimitTop = 0.0f, currentPos = 0.0f;
 
   bool triggerHoming = false;
 
@@ -200,6 +202,10 @@ static void draw_encoderStatus() {
     servoCalStep = systemState.servoCalStep;
     servoCalStart = systemState.servoCalStart;
     servoCalCenter = systemState.servoCalCenter;
+    motorLimitStep = systemState.motorLimitStep;
+    motorLimitBot = systemState.motorLimitBottom;
+    motorLimitTop = systemState.motorLimitTop;
+    currentPos = systemState.currentPosition;
     xSemaphoreGive(systemStateMutex);
   } else {
     staleData = true;
@@ -283,6 +289,38 @@ static void draw_encoderStatus() {
     }
   }
 
+  // Encoder 3: Motor Limits — Row at y=38, text baseline y=44
+  if (motorLimitStep == MOTOR_LIMIT_OFF) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Lim:Not Set");
+  } else if (motorLimitStep == MOTOR_LIMIT_SET_1) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Lim:Set 1");
+  } else {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Lim:Active");
+  }
+  u8g2.drawStr(0, 44, statusBuffer);
+
+  // Motor Limit Bar: frame from x=72 to x=124, height 7
+  if (motorLimitStep == MOTOR_LIMIT_SET_2 && motorLimitTop > motorLimitBot) {
+    const int barL = 72, barW = 52, barY = 38, barH = 7;
+    u8g2.drawFrame(barL, barY, barW, barH);
+    
+    // Map current position between limits
+    float constrainedPos = currentPos;
+    if (constrainedPos < motorLimitBot) constrainedPos = motorLimitBot;
+    if (constrainedPos > motorLimitTop) constrainedPos = motorLimitTop;
+    
+    int fillW = 0;
+    float range = motorLimitTop - motorLimitBot;
+    if (range > 0.01f) {
+      fillW = (int)(((constrainedPos - motorLimitBot) / range) * (barW - 2));
+    }
+
+    if (fillW > 0) {
+      u8g2.drawBox(barL + 1, barY + 1, fillW, barH - 2);
+    }
+  }
+
+#if 0
   // Encoder 3: StallGuard — Row at y=38, text baseline y=44
   snprintf(statusBuffer, sizeof(statusBuffer), "S3:SG:%03d", sgThreshold);
   u8g2.drawStr(0, 44, statusBuffer);
@@ -292,6 +330,7 @@ static void draw_encoderStatus() {
     u8g2.drawStr(72, 44, "[D]");
   else if (triggerHoming)
     u8g2.drawStr(72, 44, "[*]");
+#endif
 }
 
 static void draw_actionMessage() {

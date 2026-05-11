@@ -31,6 +31,9 @@ SystemState systemState = {.mode = IDLE,
                            .currentPosition = 0.0f,
                            .isHomed = false,
                            .motorEncoderLimit = 15,
+                           .motorLimitStep = MOTOR_LIMIT_OFF,
+                           .motorLimitBottom = 0.0f,
+                           .motorLimitTop = 0.0f,
                            .collisionDetected = false,
                            .collisionTimestamp = 0};
 
@@ -56,6 +59,11 @@ void initSystemState() {
     systemState.servoCalStart = preferences.getInt("srvStart", 0);
     systemState.servoCalCenter = preferences.getInt("srvCenter", 50);
 
+    // Load motor limits from NVS
+    systemState.motorLimitStep = (MotorLimitStep)preferences.getInt("limitStep", MOTOR_LIMIT_OFF);
+    systemState.motorLimitBottom = preferences.getFloat("limitBot", 0.0f);
+    systemState.motorLimitTop = preferences.getFloat("limitTop", 0.0f);
+
     // Set servo to the saved start position on boot
     systemState.servoTargetPercent = systemState.servoCalStart;
     systemState.servoPercent = systemState.servoCalStart;
@@ -72,6 +80,18 @@ void saveMotorState() {
     Serial.println("--- Saved Motor State to NVS ---");
   } else {
     ESP_LOGW("CTRL", "saveMotorState mutex timeout, skipping");
+  }
+}
+
+void saveMotorLimits() {
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    preferences.putInt("limitStep", (int)systemState.motorLimitStep);
+    preferences.putFloat("limitBot", systemState.motorLimitBottom);
+    preferences.putFloat("limitTop", systemState.motorLimitTop);
+    xSemaphoreGive(systemStateMutex);
+    Serial.println("--- Saved Motor Limits to NVS ---");
+  } else {
+    ESP_LOGW("CTRL", "saveMotorLimits mutex timeout, skipping");
   }
 }
 
@@ -361,14 +381,39 @@ static void handleAutonomousEncoder() {
     xSemaphoreGive(encoderStateMutex);
   }
 
-  // 1. Long Press: Homing Request via Event Group
+  // 1. Long Press: Motor Limits Setup
   if (longPress) {
-    printf("\nTriggering Hardware Sensorless Homing...\n");
-    LCD_setMessage("Homing Started...");
-    xEventGroupSetBits(controlEvents, BIT_HOMING_REQUEST);
+    bool callSaveLimits = false;
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      if (systemState.motorLimitStep == MOTOR_LIMIT_OFF || systemState.motorLimitStep == MOTOR_LIMIT_SET_2) {
+        systemState.currentPosition = 0.0f;
+        systemState.motorLimitBottom = 0.0f;
+        systemState.motorLimitStep = MOTOR_LIMIT_SET_1;
+        LCD_setMessage("Limit 1 Set (0.0)");
+        printf("Motor Limit 1 set to 0.0\n");
+      } else if (systemState.motorLimitStep == MOTOR_LIMIT_SET_1) {
+        float limit2 = systemState.currentPosition;
+        if (limit2 < systemState.motorLimitBottom) {
+          systemState.motorLimitTop = systemState.motorLimitBottom;
+          systemState.motorLimitBottom = limit2;
+        } else {
+          systemState.motorLimitTop = limit2;
+        }
+        systemState.motorLimitStep = MOTOR_LIMIT_SET_2;
+        callSaveLimits = true;
+        LCD_setMessage("Limits Set & Saved");
+        printf("Motor Limits set: Bottom=%.2f, Top=%.2f\n", systemState.motorLimitBottom, systemState.motorLimitTop);
+      }
+      xSemaphoreGive(systemStateMutex);
+    }
+    
+    if (callSaveLimits) {
+      saveMotorLimits();
+    }
   }
 
-  // 2. Encoder Turn: SG Threshold Tuning
+  // 2. Encoder Turn: SG Threshold Tuning (Deactivated for Manual Limits Update)
+#if 0
   if (delta3 != 0) {
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
       systemState.sgThreshold =
@@ -377,6 +422,7 @@ static void handleAutonomousEncoder() {
       xSemaphoreGive(systemStateMutex);
     }
   }
+#endif
 
   // 3. Short Press: Launch, Resume, or E-STOP
   if (shortPress) {
