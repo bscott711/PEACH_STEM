@@ -155,12 +155,23 @@ void motor_task(void *parameter) {
         xSemaphoreGive(systemStateMutex);
       }
 
-      if (botSet && currentPos <= limBot && targetSpeed < 0) {
-        targetSpeed = 0;
-        LCD_setMessage("Bottom Reached");
-        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-          systemState.targetSpeed = 0;
-          xSemaphoreGive(systemStateMutex);
+      if (botSet && targetSpeed < 0) {
+        float distToBot = currentPos - limBot;
+        if (distToBot <= 0.0f) {
+          targetSpeed = 0;
+          LCD_setMessage("Bottom Reached");
+          if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            systemState.targetSpeed = 0;
+            xSemaphoreGive(systemStateMutex);
+          }
+        } else if (distToBot < 5.0f) {
+          // Deceleration zone: taper speed linearly based on distance to bottom
+          int minSpeed = 1000;
+          int maxSpeed = abs(targetSpeed);
+          if (maxSpeed > minSpeed) {
+            int scaledSpeed = minSpeed + (int)((maxSpeed - minSpeed) * (distToBot / 5.0f));
+            targetSpeed = -scaledSpeed;
+          }
         }
       } else if (topSet && currentPos >= limTop && targetSpeed > 0) {
         targetSpeed = 0;

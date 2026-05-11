@@ -200,6 +200,7 @@ static void draw_encoderStatus() {
   static bool motorLimitSet[3] = {false, false, false};
   static float currentPos = 0.0f;
   static Enc3Menu enc3MenuSelection = MENU_AUTO;
+  static Enc1Menu enc1MenuSelection = MENU_ACT_AUTO;
 
   if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
     servoTarget = systemState.servoTargetPercent;
@@ -217,6 +218,7 @@ static void draw_encoderStatus() {
     }
     currentPos = systemState.currentPosition;
     enc3MenuSelection = systemState.enc3MenuSelection;
+    enc1MenuSelection = systemState.enc1MenuSelection;
     xSemaphoreGive(systemStateMutex);
   } else {
     ESP_LOGW("LCD", "systemStateMutex timeout; showing cached values");
@@ -257,7 +259,19 @@ static void draw_encoderStatus() {
   }
 
   // Encoder 1: Actuator — Row at y=20, text baseline y=26
-  snprintf(statusBuffer, sizeof(statusBuffer), "S1:Act:%03d%%", actuatorTarget);
+  if (enc1MenuSelection == MENU_ACT_AUTO) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S1:Act:%03d%%",
+             actuatorTarget);
+  } else if (enc1MenuSelection == MENU_ACT_GOTO_TOP) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S1:ToTop:%03d%%",
+             actuatorTarget);
+  } else if (enc1MenuSelection == MENU_ACT_GOTO_MID) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S1:ToMid:%03d%%",
+             actuatorTarget);
+  } else if (enc1MenuSelection == MENU_ACT_GOTO_BOT) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S1:ToBot:%03d%%",
+             actuatorTarget);
+  }
   u8g2.drawStr(0, 26, statusBuffer);
 
   // Fill bar: frame from x=72 to x=124, height 7
@@ -322,9 +336,12 @@ static void draw_encoderStatus() {
       for (int i = 0; i < 3; i++) {
         if (motorLimitSet[i]) {
           float val = motorLimits[i];
-          if (val < minLim) val = minLim;
-          if (val > maxLim) val = maxLim;
-          int tickX = trackL + (int)(((val - minLim) / range) * (trackR - trackL));
+          if (val < minLim)
+            val = minLim;
+          if (val > maxLim)
+            val = maxLim;
+          int tickX =
+              trackL + (int)(((val - minLim) / range) * (trackR - trackL));
           u8g2.drawVLine(tickX, trackY - 2, 5);
         }
       }
@@ -372,13 +389,16 @@ static void draw_actionMessage() {
   }
 
   uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+  EventBits_t events = xEventGroupGetBits(controlEvents);
+  bool isAuto = (events & BIT_AUTO_RUNNING) != 0;
 
-  // Show message for 2.5 seconds after being set
-  if (pending && (now - timestamp < 2500)) {
+  // Show message for 2.5 seconds after being set, or infinitely if in Auto
+  // sequence
+  if (pending && (isAuto || (now - timestamp < 2500))) {
     char actionBuffer[48];
     snprintf(actionBuffer, sizeof(actionBuffer), "> %s", localMsg);
     u8g2.drawStr(0, 60, actionBuffer);
-  } else if (pending) {
+  } else if (pending && !isAuto) {
     // Safely auto-expire the flag
     if (lcdMutex != NULL &&
         xSemaphoreTake(lcdMutex, pdMS_TO_TICKS(5)) == pdTRUE) {

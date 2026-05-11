@@ -23,6 +23,9 @@ SystemState systemState = {.mode = IDLE,
                            .actuatorDir = ACT_STOP,
                            .actuatorTargetPercent = 0,
                            .actuatorPercent = 0,
+                           .actuatorLimits = {0, 0, 0},
+                           .actuatorLimitSet = {false, false, false},
+                           .enc1MenuSelection = MENU_ACT_AUTO,
                            .actualSpeed = 0,
                            .targetSpeed = 0,
                            .isHoming = false,
@@ -66,6 +69,14 @@ void initSystemState() {
     systemState.motorLimitSet[0] = preferences.getBool("limS_B", false);
     systemState.motorLimitSet[1] = preferences.getBool("limS_M", false);
     systemState.motorLimitSet[2] = preferences.getBool("limS_T", false);
+
+    // Load actuator limits from NVS
+    systemState.actuatorLimits[0] = preferences.getInt("actB", 0);
+    systemState.actuatorLimits[1] = preferences.getInt("actM", 0);
+    systemState.actuatorLimits[2] = preferences.getInt("actT", 0);
+    systemState.actuatorLimitSet[0] = preferences.getBool("actS_B", false);
+    systemState.actuatorLimitSet[1] = preferences.getBool("actS_M", false);
+    systemState.actuatorLimitSet[2] = preferences.getBool("actS_T", false);
 
     // Set servo to the saved start position on boot
     if (systemState.servoCalStart != -1) {
@@ -113,6 +124,21 @@ void saveServoCalibration() {
     xSemaphoreGive(systemStateMutex);
   }
   Serial.println("--- Saved Servo Calibration to NVS ---");
+}
+
+void saveActuatorLimits() {
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    preferences.putInt("actB", systemState.actuatorLimits[0]);
+    preferences.putInt("actM", systemState.actuatorLimits[1]);
+    preferences.putInt("actT", systemState.actuatorLimits[2]);
+    preferences.putBool("actS_B", systemState.actuatorLimitSet[0]);
+    preferences.putBool("actS_M", systemState.actuatorLimitSet[1]);
+    preferences.putBool("actS_T", systemState.actuatorLimitSet[2]);
+    xSemaphoreGive(systemStateMutex);
+    Serial.println("--- Saved Actuator Limits to NVS ---");
+  } else {
+    ESP_LOGW("CTRL", "saveActuatorLimits mutex timeout, skipping");
+  }
 }
 
 // ------------------------------------------------------------------------
@@ -293,6 +319,8 @@ static void handleServoEncoder() {
 static void handleActuatorEncoder() {
   int32_t currentPos = 0;
   bool btnPressed = false;
+  bool longPress = false;
+  bool doublePress = false;
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     g_encoderState.position[1] = constrain(g_encoderState.position[1], 0, 10);
@@ -302,9 +330,18 @@ static void handleActuatorEncoder() {
       btnPressed = true;
       g_encoderState.buttonPressed[1] = false;
     }
+    if (g_encoderState.buttonLongPressed[1]) {
+      longPress = true;
+      g_encoderState.buttonLongPressed[1] = false;
+    }
+    if (g_encoderState.buttonDoublePressed[1]) {
+      doublePress = true;
+      g_encoderState.buttonDoublePressed[1] = false;
+    }
     xSemaphoreGive(encoderStateMutex);
   }
 
+  // 1. Encoder Turn: Jog Actuator
   static int32_t d1 = 0;
   if (d1 != currentPos) {
     d1 = currentPos;
@@ -314,31 +351,73 @@ static void handleActuatorEncoder() {
     }
   }
 
+  // 2. Short Press: Cycle Menu and Execute GOTO
   if (btnPressed) {
     LCD_notifyButtonPress(1);
-
-    int percent = 0;
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      percent = systemState.actuatorTargetPercent;
+      int sel = (int)systemState.enc1MenuSelection + 1;
+      if (sel > 3) sel = 0;
+      systemState.enc1MenuSelection = (Enc1Menu)sel;
+      
+      // Auto-GOTO if the limit is set
+      if (sel == MENU_ACT_GOTO_TOP && systemState.actuatorLimitSet[2]) {
+        systemState.actuatorTargetPercent = systemState.actuatorLimits[2];
+        d1 = systemState.actuatorTargetPercent / ACTUATOR_STEP_PERCENT;
+      } else if (sel == MENU_ACT_GOTO_MID && systemState.actuatorLimitSet[1]) {
+        systemState.actuatorTargetPercent = systemState.actuatorLimits[1];
+        d1 = systemState.actuatorTargetPercent / ACTUATOR_STEP_PERCENT;
+      } else if (sel == MENU_ACT_GOTO_BOT && systemState.actuatorLimitSet[0]) {
+        systemState.actuatorTargetPercent = systemState.actuatorLimits[0];
+        d1 = systemState.actuatorTargetPercent / ACTUATOR_STEP_PERCENT;
+      }
+      
+      // Update encoder position to match auto-goto
+      if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+         g_encoderState.position[1] = d1;
+         xSemaphoreGive(encoderStateMutex);
+      }
+      
       xSemaphoreGive(systemStateMutex);
     }
+  }
 
-    int newPercent = (percent == 0) ? 50 : (percent == 50) ? 100 : 0;
-
-    if (newPercent == 0 && percent == 100)
-      LCD_setMessage("Actuator: 0%");
-    else if (newPercent == 0)
-      LCD_setMessage("Actuator: Reset");
-    else if (newPercent == 50)
-      LCD_setMessage("Actuator: 50%");
-    else
-      LCD_setMessage("Actuator: 100%");
-
+  // 3. Long Press: Set Limit
+  if (longPress) {
+    bool callSaveLimits = false;
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      systemState.actuatorTargetPercent = newPercent;
+      if (systemState.enc1MenuSelection != MENU_ACT_AUTO) {
+        int idx = 2; // Default GOTO_TOP
+        if (systemState.enc1MenuSelection == MENU_ACT_GOTO_MID) idx = 1;
+        else if (systemState.enc1MenuSelection == MENU_ACT_GOTO_BOT) idx = 0;
+
+        systemState.actuatorLimits[idx] = systemState.actuatorTargetPercent;
+        systemState.actuatorLimitSet[idx] = true;
+        callSaveLimits = true;
+        LCD_setMessage("Actuator: Set");
+        printf("Actuator Limit %d set to %d%%\n", idx, systemState.actuatorTargetPercent);
+      }
       xSemaphoreGive(systemStateMutex);
     }
-    printf("Actuator Button Pressed. New Target: %d%%\n", newPercent);
+    if (callSaveLimits) saveActuatorLimits();
+  }
+
+  // 4. Double Press: Clear Limit
+  if (doublePress) {
+    bool callSaveLimits = false;
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      if (systemState.enc1MenuSelection != MENU_ACT_AUTO) {
+        int idx = 2;
+        if (systemState.enc1MenuSelection == MENU_ACT_GOTO_MID) idx = 1;
+        else if (systemState.enc1MenuSelection == MENU_ACT_GOTO_BOT) idx = 0;
+
+        systemState.actuatorLimitSet[idx] = false;
+        callSaveLimits = true;
+        LCD_setMessage("Actuator: Cleared");
+        printf("Actuator Limit %d cleared\n", idx);
+      }
+      xSemaphoreGive(systemStateMutex);
+    }
+    if (callSaveLimits) saveActuatorLimits();
   }
 }
 
@@ -581,18 +660,18 @@ void autonomous_task(void *pvParameters) {
     {SEQ_WAIT_MS,       1000,     0,              NULL},
 
     // --- Aspiration Mixing (3 Cycles) ---
-    // Push plunger down (100) to expel, Pull (0) to aspirate
-    {SEQ_MOVE_ACTUATOR, 100,      0,              "Auto: Mix 1 (Push)"},
+    // Push plunger down (Bot=2) to expel, Pull (Top=0) to aspirate
+    {SEQ_MOVE_ACTUATOR, 2,        0,              "Auto: Mix 1 (Push)"},
     {SEQ_WAIT_MS,       750,      0,              NULL},
     {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Mix 1 (Pull)"},
     {SEQ_WAIT_MS,       750,      0,              NULL},
 
-    {SEQ_MOVE_ACTUATOR, 100,      0,              "Auto: Mix 2 (Push)"},
+    {SEQ_MOVE_ACTUATOR, 2,        0,              "Auto: Mix 2 (Push)"},
     {SEQ_WAIT_MS,       750,      0,              NULL},
     {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Mix 2 (Pull)"},
     {SEQ_WAIT_MS,       750,      0,              NULL},
 
-    {SEQ_MOVE_ACTUATOR, 100,      0,              "Auto: Mix 3 (Push)"},
+    {SEQ_MOVE_ACTUATOR, 2,        0,              "Auto: Mix 3 (Push)"},
     {SEQ_WAIT_MS,       750,      0,              NULL},
     {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Aspirating"},
     {SEQ_WAIT_MS,       1500,     0,              NULL},
@@ -606,7 +685,7 @@ void autonomous_task(void *pvParameters) {
     {SEQ_WAIT_MS,       1000,     0,              NULL},
 
     // --- Dispense Cells ---
-    {SEQ_MOVE_ACTUATOR, 100,      0,              "Auto: Dispensing"},
+    {SEQ_MOVE_ACTUATOR, 2,        0,              "Auto: Dispensing"},
     {SEQ_WAIT_MS,       1500,     0,              NULL},
 
     // --- Return Home ---
@@ -709,14 +788,16 @@ void autonomous_task(void *pvParameters) {
     }
 
     case SEQ_MOVE_ACTUATOR: {
+      int actuatorTargetPercent = 0;
       if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        systemState.actuatorTargetPercent = step.target;
+        actuatorTargetPercent = systemState.actuatorLimits[step.target];
+        systemState.actuatorTargetPercent = actuatorTargetPercent;
         xSemaphoreGive(systemStateMutex);
       }
 
       // UI Back-Sync: update encoder 1 so manual controls stay in sync
       if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        g_encoderState.position[1] = step.target;
+        g_encoderState.position[1] = actuatorTargetPercent / ACTUATOR_STEP_PERCENT;
         xSemaphoreGive(encoderStateMutex);
       }
       break;
