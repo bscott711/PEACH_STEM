@@ -564,29 +564,20 @@ void controller_task(void *pvParameters) {
 
 void autonomous_task(void *pvParameters) {
   // ---- Sequence Blueprint ----
-  // Read calibration values for servo and stepper positions
-  int calStart = 0, calCenter = 50;
-  float limBot = 0.0f, limMid = 0.0f, limTop = 0.0f;
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-    calStart = systemState.servoCalStart;
-    calCenter = systemState.servoCalCenter;
-    limBot = systemState.motorLimits[0];
-    limMid = systemState.motorLimits[1];
-    limTop = systemState.motorLimits[2];
-    xSemaphoreGive(systemStateMutex);
-  }
+
 
   // clang-format off
   const SequenceStep peachSequence[] = {
     // --- Initialize ---
+    {SEQ_WAIT_MS,       3000,     0,              "Auto: Starting... "},
     {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Retracting"},
-    {SEQ_MOVE_Z,        0,        limTop,         "Auto: To Clearance"},
+    {SEQ_MOVE_Z,        2,        0,              "Auto: To Clearance"}, // 2 = Top
     {SEQ_WAIT_MS,       1000,     0,              NULL},
 
     // --- Move to Aspirate Position ---
-    {SEQ_MOVE_SERVO,    calCenter,0,              "Auto: Servo Center"},
+    {SEQ_MOVE_SERVO,    1,        0,              "Auto: Servo Center"}, // 1 = Center
     {SEQ_WAIT_MS,       2500,     0,              NULL},
-    {SEQ_MOVE_Z,        0,        limMid,         "Auto: Descending"},
+    {SEQ_MOVE_Z,        1,        0,              "Auto: Descending"},   // 1 = Mid
     {SEQ_WAIT_MS,       1000,     0,              NULL},
 
     // --- Aspiration Mixing (3 Cycles) ---
@@ -607,11 +598,11 @@ void autonomous_task(void *pvParameters) {
     {SEQ_WAIT_MS,       1500,     0,              NULL},
 
     // --- Move to Dispense Position ---
-    {SEQ_MOVE_Z,        0,        limTop,         "Auto: Up to Clearance"},
+    {SEQ_MOVE_Z,        2,        0,              "Auto: Up to Clearance"}, // 2 = Top
     {SEQ_WAIT_MS,       500,      0,              NULL},
-    {SEQ_MOVE_SERVO,    calStart, 0,              "Auto: Servo Start"},
+    {SEQ_MOVE_SERVO,    0,        0,              "Auto: Servo Start"},     // 0 = Start
     {SEQ_WAIT_MS,       1500,     0,              NULL},
-    {SEQ_MOVE_Z,        0,        limBot,         "Auto: Down to Dispense"},
+    {SEQ_MOVE_Z,        0,        0,              "Auto: Down to Dispense"},// 0 = Bot
     {SEQ_WAIT_MS,       1000,     0,              NULL},
 
     // --- Dispense Cells ---
@@ -619,7 +610,7 @@ void autonomous_task(void *pvParameters) {
     {SEQ_WAIT_MS,       1500,     0,              NULL},
 
     // --- Return Home ---
-    {SEQ_MOVE_Z,        0,        limTop,         "Auto: Returning Home"},
+    {SEQ_MOVE_Z,        2,        0,              "Auto: Returning Home"},  // 2 = Top
     {SEQ_WAIT_MS,       500,      0,              NULL},
     {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Reset Actuator"},
     {SEQ_WAIT_MS,       1000,     0,              NULL},
@@ -648,14 +639,16 @@ void autonomous_task(void *pvParameters) {
     case SEQ_MOVE_Z: {
       // Deterministic Z-axis positioning using virtual position tracking
       float currentPos = 0.0f;
+      float targetZ = 0.0f;
       if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
         currentPos = systemState.currentPosition;
+        targetZ = systemState.motorLimits[step.target];
         xSemaphoreGive(systemStateMutex);
       }
 
       // Set direction based on whether we need to go up or down
       int velocity =
-          (step.zTarget > currentPos) ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
+          (targetZ > currentPos) ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
       bool goingUp = (velocity > 0);
 
       if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -677,9 +670,9 @@ void autonomous_task(void *pvParameters) {
         }
 
         // Check if we've crossed the target threshold
-        if (goingUp && currentPos >= step.zTarget)
+        if (goingUp && currentPos >= targetZ)
           break;
-        if (!goingUp && currentPos <= step.zTarget)
+        if (!goingUp && currentPos <= targetZ)
           break;
 
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -700,14 +693,16 @@ void autonomous_task(void *pvParameters) {
     }
 
     case SEQ_MOVE_SERVO: {
+      int servoTargetPercent = 0;
       if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        systemState.servoTargetPercent = step.target;
+        servoTargetPercent = (step.target == 0) ? systemState.servoCalStart : systemState.servoCalCenter;
+        systemState.servoTargetPercent = servoTargetPercent;
         xSemaphoreGive(systemStateMutex);
       }
 
       // UI Back-Sync: update encoder 0 so manual controls stay in sync
       if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        g_encoderState.position[0] = step.target;
+        g_encoderState.position[0] = servoTargetPercent;
         xSemaphoreGive(encoderStateMutex);
       }
       break;
