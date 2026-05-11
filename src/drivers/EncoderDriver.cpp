@@ -39,6 +39,7 @@ void init_encoder() {
     g_encoderState.position[i] = ss.getEncoderPosition(i);
     ss.enableEncoderInterrupt(i);
     g_encoderState.buttonPressed[i] = false;
+    g_encoderState.buttonDoublePressed[i] = false;
     g_encoderState.buttonLongPressed[i] = false;
   }
 
@@ -51,12 +52,14 @@ void init_encoder() {
 
 void EncoderDriver_Service() {
   TickType_t now = xTaskGetTickCount();
+  static TickType_t singleClickPending[4] = {0};
 
   for (int i = 0; i < 4; i++) {
 
     // 1. Process Buttons with Lockout Debouncing + Confirmation Read
     bool reading = ss.digitalRead(SEESAW_BUTTON_PINS[i]);
     bool setPressed = false;
+    bool setDoublePressed = false;
     bool setLongPressed = false;
 
     if (reading != lastBtnLevel[i]) {
@@ -76,13 +79,26 @@ void EncoderDriver_Service() {
 
           if (duration >= 1000) {
             setLongPressed = true;
+            singleClickPending[i] = 0; // cancel any pending single click
             ESP_LOGI("ENCODER", "Button %d LONG pressed", i);
           } else {
-            setPressed = true;
-            ESP_LOGI("ENCODER", "Button %d pressed", i);
+            if (singleClickPending[i] != 0) {
+              setDoublePressed = true;
+              singleClickPending[i] = 0;
+              ESP_LOGI("ENCODER", "Button %d DOUBLE pressed", i);
+            } else {
+              singleClickPending[i] = now;
+            }
           }
         }
       }
+    }
+
+    // Check if the single click timer has expired
+    if (singleClickPending[i] != 0 && (now - singleClickPending[i]) * portTICK_PERIOD_MS > 250) {
+      setPressed = true;
+      singleClickPending[i] = 0;
+      ESP_LOGI("ENCODER", "Button %d pressed", i);
     }
 
     // 2. Process Encoder Rotation
@@ -90,10 +106,13 @@ void EncoderDriver_Service() {
     int32_t d = ss.getEncoderDelta(i);
 
     // 3. Update Global State (Mutex Protected)
-    if (setPressed || setLongPressed || d != 0) {
+    if (setPressed || setDoublePressed || setLongPressed || d != 0) {
       if (xSemaphoreTake(encoderStateMutex, portMAX_DELAY) == pdTRUE) {
         if (setPressed) {
           g_encoderState.buttonPressed[i] = true;
+        }
+        if (setDoublePressed) {
+          g_encoderState.buttonDoublePressed[i] = true;
         }
         if (setLongPressed) {
           g_encoderState.buttonLongPressed[i] = true;

@@ -16,6 +16,7 @@ static const uint8_t SEESAW_BUTTON_PINS[4] = {SEESAW_BTN_ENC0, SEESAW_BTN_ENC1,
 typedef struct {
   int32_t position[4];
   bool buttonPressed[4];
+  bool buttonDoublePressed[4];
   bool buttonLongPressed[4];
 } EncoderState;
 

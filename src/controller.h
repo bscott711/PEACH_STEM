@@ -7,7 +7,7 @@
 
 // --- Configuration & Magic Numbers ---
 #define MOTOR_SPEED_SCALE_FACTOR 333
-#define AUTO_SEQUENCE_SPEED 120000
+#define AUTO_SEQUENCE_SPEED 4995
 #define AUTO_SEQUENCE_DURATION_MS 15000
 #define SERVO_MIN_PERCENT 0
 #define SERVO_CENTER_PERCENT 50
@@ -28,7 +28,7 @@
 enum DeviceMode { IDLE, PICKUP_CELL, DROPOFF_CELL };
 enum ActuatorDirection { ACT_STOP = 0, ACT_FORWARD, ACT_REVERSE };
 enum ServoCalibrationStep { CAL_OFF, CAL_SET_START, CAL_SET_CENTER };
-enum MotorLimitStep { MOTOR_LIMIT_OFF, MOTOR_LIMIT_SET_1, MOTOR_LIMIT_SET_2 };
+enum Enc3Menu { MENU_AUTO, MENU_GOTO_TOP, MENU_GOTO_MID, MENU_GOTO_BOT };
 
 
 // --- Sequence Engine Types ---
@@ -80,10 +80,12 @@ struct SystemState {
   bool isHomed;
   int motorEncoderLimit;
 
-  // Motor Limits
-  MotorLimitStep motorLimitStep;
-  float motorLimitBottom;
-  float motorLimitTop;
+  // Motor Limits (0=Bot, 1=Mid, 2=Top)
+  float motorLimits[3];
+  bool motorLimitSet[3];
+
+  // Encoder 3 Menu State
+  Enc3Menu enc3MenuSelection;
 
   // Collision Detection
   bool collisionDetected;
@@ -103,6 +105,7 @@ void saveServoCalibration();
 // FreeRTOS task entries
 void controller_task(void *pvParameters);
 void autonomous_task(void *pvParameters);
+void motor_goto_task(void *pvParameters);
 
 // Utility functions
 float motorDistanceCalculator(float speed, int timeInMS);

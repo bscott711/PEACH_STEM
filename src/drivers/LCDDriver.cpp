@@ -184,8 +184,10 @@ static void draw_encoderStatus() {
   static DeviceMode currentMode = IDLE;
   static bool isHoming = false, sgDiagMode = false;
   static ServoCalibrationStep servoCalStep = CAL_OFF;
-  static MotorLimitStep motorLimitStep = MOTOR_LIMIT_OFF;
-  static float motorLimitBot = 0.0f, motorLimitTop = 0.0f, currentPos = 0.0f;
+  static float motorLimits[3] = {0.0f, 0.0f, 0.0f};
+  static bool motorLimitSet[3] = {false, false, false};
+  static float currentPos = 0.0f;
+  static Enc3Menu enc3MenuSelection = MENU_AUTO;
 
   bool triggerHoming = false;
 
@@ -198,14 +200,15 @@ static void draw_encoderStatus() {
     sgThreshold = systemState.sgThreshold;
     currentMode = systemState.mode;
     isHoming = systemState.isHoming;
-    sgDiagMode = systemState.sgDiagMode;
     servoCalStep = systemState.servoCalStep;
     servoCalStart = systemState.servoCalStart;
     servoCalCenter = systemState.servoCalCenter;
-    motorLimitStep = systemState.motorLimitStep;
-    motorLimitBot = systemState.motorLimitBottom;
-    motorLimitTop = systemState.motorLimitTop;
+    for (int i=0; i<3; i++) {
+      motorLimits[i] = systemState.motorLimits[i];
+      motorLimitSet[i] = systemState.motorLimitSet[i];
+    }
     currentPos = systemState.currentPosition;
+    enc3MenuSelection = systemState.enc3MenuSelection;
     xSemaphoreGive(systemStateMutex);
   } else {
     staleData = true;
@@ -289,34 +292,47 @@ static void draw_encoderStatus() {
     }
   }
 
-  // Encoder 3: Motor Limits — Row at y=38, text baseline y=44
-  if (motorLimitStep == MOTOR_LIMIT_OFF) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Lim:Not Set");
-  } else if (motorLimitStep == MOTOR_LIMIT_SET_1) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Lim:Set 1");
-  } else {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Lim:Active");
+  if (enc3MenuSelection == MENU_AUTO) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Cmd:Auto");
+  } else if (enc3MenuSelection == MENU_GOTO_TOP) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Cmd:To Top");
+  } else if (enc3MenuSelection == MENU_GOTO_MID) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Cmd:To Mid");
+  } else if (enc3MenuSelection == MENU_GOTO_BOT) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Cmd:To Bot");
   }
   u8g2.drawStr(0, 44, statusBuffer);
 
-  // Motor Limit Bar: frame from x=72 to x=124, height 7
-  if (motorLimitStep == MOTOR_LIMIT_SET_2 && motorLimitTop > motorLimitBot) {
-    const int barL = 72, barW = 52, barY = 38, barH = 7;
-    u8g2.drawFrame(barL, barY, barW, barH);
-    
-    // Map current position between limits
-    float constrainedPos = currentPos;
-    if (constrainedPos < motorLimitBot) constrainedPos = motorLimitBot;
-    if (constrainedPos > motorLimitTop) constrainedPos = motorLimitTop;
-    
-    int fillW = 0;
-    float range = motorLimitTop - motorLimitBot;
-    if (range > 0.01f) {
-      fillW = (int)(((constrainedPos - motorLimitBot) / range) * (barW - 2));
+  int limitsSetCount = 0;
+  float minLim = 1e9f, maxLim = -1e9f;
+  for (int i=0; i<3; i++) {
+    if (motorLimitSet[i]) {
+        limitsSetCount++;
+        if (motorLimits[i] < minLim) minLim = motorLimits[i];
+        if (motorLimits[i] > maxLim) maxLim = motorLimits[i];
     }
+  }
 
-    if (fillW > 0) {
-      u8g2.drawBox(barL + 1, barY + 1, fillW, barH - 2);
+  if (limitsSetCount >= 2 && maxLim > minLim) {
+    // Sliding dot UI: track from x=72 to x=124, y centered at 41
+    const int trackL = 72, trackR = 124, trackY = 41;
+    u8g2.drawHLine(trackL, trackY, trackR - trackL);
+    
+    float range = maxLim - minLim;
+    if (range > 0.01f) {
+      for (int i=0; i<3; i++) {
+         if (motorLimitSet[i]) {
+            int tickX = trackL + (int)(((motorLimits[i] - minLim) / range) * (trackR - trackL));
+            u8g2.drawVLine(tickX, trackY - 2, 5);
+         }
+      }
+      
+      float constrainedPos = currentPos;
+      if (constrainedPos < minLim) constrainedPos = minLim;
+      if (constrainedPos > maxLim) constrainedPos = maxLim;
+      
+      int dotX = trackL + (int)(((constrainedPos - minLim) / range) * (trackR - trackL));
+      u8g2.drawDisc(dotX, trackY, 2);
     }
   }
 

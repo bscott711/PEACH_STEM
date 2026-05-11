@@ -31,9 +31,9 @@ SystemState systemState = {.mode = IDLE,
                            .currentPosition = 0.0f,
                            .isHomed = false,
                            .motorEncoderLimit = 15,
-                           .motorLimitStep = MOTOR_LIMIT_OFF,
-                           .motorLimitBottom = 0.0f,
-                           .motorLimitTop = 0.0f,
+                           .motorLimits = {0.0f, 0.0f, 0.0f},
+                           .motorLimitSet = {false, false, false},
+                           .enc3MenuSelection = MENU_AUTO,
                            .collisionDetected = false,
                            .collisionTimestamp = 0};
 
@@ -60,9 +60,12 @@ void initSystemState() {
     systemState.servoCalCenter = preferences.getInt("srvCenter", 50);
 
     // Load motor limits from NVS
-    systemState.motorLimitStep = (MotorLimitStep)preferences.getInt("limitStep", MOTOR_LIMIT_OFF);
-    systemState.motorLimitBottom = preferences.getFloat("limitBot", 0.0f);
-    systemState.motorLimitTop = preferences.getFloat("limitTop", 0.0f);
+    systemState.motorLimits[0] = preferences.getFloat("limB", 0.0f);
+    systemState.motorLimits[1] = preferences.getFloat("limM", 0.0f);
+    systemState.motorLimits[2] = preferences.getFloat("limT", 0.0f);
+    systemState.motorLimitSet[0] = preferences.getBool("limS_B", false);
+    systemState.motorLimitSet[1] = preferences.getBool("limS_M", false);
+    systemState.motorLimitSet[2] = preferences.getBool("limS_T", false);
 
     // Set servo to the saved start position on boot
     systemState.servoTargetPercent = systemState.servoCalStart;
@@ -85,9 +88,12 @@ void saveMotorState() {
 
 void saveMotorLimits() {
   if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-    preferences.putInt("limitStep", (int)systemState.motorLimitStep);
-    preferences.putFloat("limitBot", systemState.motorLimitBottom);
-    preferences.putFloat("limitTop", systemState.motorLimitTop);
+    preferences.putFloat("limB", systemState.motorLimits[0]);
+    preferences.putFloat("limM", systemState.motorLimits[1]);
+    preferences.putFloat("limT", systemState.motorLimits[2]);
+    preferences.putBool("limS_B", systemState.motorLimitSet[0]);
+    preferences.putBool("limS_M", systemState.motorLimitSet[1]);
+    preferences.putBool("limS_T", systemState.motorLimitSet[2]);
     xSemaphoreGive(systemStateMutex);
     Serial.println("--- Saved Motor Limits to NVS ---");
   } else {
@@ -362,12 +368,17 @@ static void handleMotorEncoder() {
 static void handleAutonomousEncoder() {
   bool longPress = false;
   bool shortPress = false;
+  bool doublePress = false;
   int32_t delta3 = 0;
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     if (g_encoderState.buttonLongPressed[3]) {
       longPress = true;
       g_encoderState.buttonLongPressed[3] = false;
+    }
+    if (g_encoderState.buttonDoublePressed[3]) {
+      doublePress = true;
+      g_encoderState.buttonDoublePressed[3] = false;
     }
     if (g_encoderState.buttonPressed[3]) {
       shortPress = true;
@@ -385,44 +396,51 @@ static void handleAutonomousEncoder() {
   if (longPress) {
     bool callSaveLimits = false;
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      if (systemState.motorLimitStep == MOTOR_LIMIT_OFF || systemState.motorLimitStep == MOTOR_LIMIT_SET_2) {
-        systemState.currentPosition = 0.0f;
-        systemState.motorLimitBottom = 0.0f;
-        systemState.motorLimitStep = MOTOR_LIMIT_SET_1;
-        LCD_setMessage("Limit 1 Set (0.0)");
-        printf("Motor Limit 1 set to 0.0\n");
-      } else if (systemState.motorLimitStep == MOTOR_LIMIT_SET_1) {
-        float limit2 = systemState.currentPosition;
-        if (limit2 < systemState.motorLimitBottom) {
-          systemState.motorLimitTop = systemState.motorLimitBottom;
-          systemState.motorLimitBottom = limit2;
-        } else {
-          systemState.motorLimitTop = limit2;
-        }
-        systemState.motorLimitStep = MOTOR_LIMIT_SET_2;
+      if (systemState.enc3MenuSelection != MENU_AUTO) {
+        int idx = 2; // Default GOTO_TOP
+        if (systemState.enc3MenuSelection == MENU_GOTO_MID) idx = 1;
+        else if (systemState.enc3MenuSelection == MENU_GOTO_BOT) idx = 0;
+
+        systemState.motorLimits[idx] = systemState.currentPosition;
+        systemState.motorLimitSet[idx] = true;
         callSaveLimits = true;
-        LCD_setMessage("Limits Set & Saved");
-        printf("Motor Limits set: Bottom=%.2f, Top=%.2f\n", systemState.motorLimitBottom, systemState.motorLimitTop);
+        LCD_setMessage("Position Set");
+        printf("Limit %d set to %.2f\n", idx, systemState.currentPosition);
       }
       xSemaphoreGive(systemStateMutex);
     }
-    
-    if (callSaveLimits) {
-      saveMotorLimits();
-    }
+    if (callSaveLimits) saveMotorLimits();
   }
 
-  // 2. Encoder Turn: SG Threshold Tuning (Deactivated for Manual Limits Update)
-#if 0
+  // 1b. Double Press: Clear Position
+  if (doublePress) {
+    bool callSaveLimits = false;
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      if (systemState.enc3MenuSelection != MENU_AUTO) {
+        int idx = 2;
+        if (systemState.enc3MenuSelection == MENU_GOTO_MID) idx = 1;
+        else if (systemState.enc3MenuSelection == MENU_GOTO_BOT) idx = 0;
+
+        systemState.motorLimitSet[idx] = false;
+        callSaveLimits = true;
+        LCD_setMessage("Position Cleared");
+        printf("Limit %d cleared\n", idx);
+      }
+      xSemaphoreGive(systemStateMutex);
+    }
+    if (callSaveLimits) saveMotorLimits();
+  }
+
+  // 2. Encoder Turn: Cycle Menu
   if (delta3 != 0) {
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      systemState.sgThreshold =
-          constrain(systemState.sgThreshold + delta3, 0, 255);
-      printf("Enc 3 (SG Threshold): %d\n", systemState.sgThreshold);
+      int sel = (int)systemState.enc3MenuSelection + delta3;
+      while (sel < 0) sel += 4;
+      sel = sel % 4;
+      systemState.enc3MenuSelection = (Enc3Menu)sel;
       xSemaphoreGive(systemStateMutex);
     }
   }
-#endif
 
   // 3. Short Press: Launch, Resume, or E-STOP
   if (shortPress) {
@@ -430,20 +448,45 @@ static void handleAutonomousEncoder() {
 
     EventBits_t events = xEventGroupGetBits(controlEvents);
     if (!(events & BIT_AUTO_RUNNING)) {
-      // No sequence running — launch a new one
-      TaskHandle_t autoTaskHandle = NULL;
-      if (xTaskCreate(autonomous_task, "AutoTask", 4096, NULL, 2,
-                      &autoTaskHandle) == pdPASS) {
-        xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
+      Enc3Menu sel = MENU_AUTO;
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        sel = systemState.enc3MenuSelection;
+        xSemaphoreGive(systemStateMutex);
+      }
+
+      if (sel == MENU_AUTO) {
+        TaskHandle_t autoTaskHandle = NULL;
+        if (xTaskCreate(autonomous_task, "AutoTask", 4096, NULL, 2,
+                        &autoTaskHandle) == pdPASS) {
+          xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
+        } else {
+          LCD_setMessage("Error: Task Failed");
+          ESP_LOGE("CTRL", "Failed to create autonomous_task");
+        }
       } else {
-        LCD_setMessage("Error: Task Failed");
-        ESP_LOGE("CTRL", "Failed to create autonomous_task");
+        bool canRun = false;
+        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+          int idx = 2;
+          if (sel == MENU_GOTO_MID) idx = 1;
+          else if (sel == MENU_GOTO_BOT) idx = 0;
+          canRun = systemState.motorLimitSet[idx];
+          xSemaphoreGive(systemStateMutex);
+        }
+
+        if (canRun) {
+          TaskHandle_t gotoTaskHandle = NULL;
+          if (xTaskCreate(motor_goto_task, "GotoTask", 4096, NULL, 2,
+                          &gotoTaskHandle) == pdPASS) {
+            xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
+          } else {
+            LCD_setMessage("Error: Task Failed");
+          }
+        } else {
+          LCD_setMessage("Pos Not Set");
+        }
       }
     } else {
-      // Sequence IS running — context-dependent action:
-      // BIT_AUTO_RESUME is used by SEQ_WAIT_USER to continue.
-      // If the sequence is NOT waiting, this acts as an E-STOP.
-      // We fire both bits — the engine checks ESTOP first.
+      // Sequence IS running — acts as an E-STOP.
       xEventGroupSetBits(controlEvents,
                          BIT_AUTO_RESUME | BIT_ESTOP_REQUEST);
       LCD_setMessage("Auto: STOPPING...");
@@ -718,4 +761,73 @@ float motorDistanceCalculator(float speed, int timeInMS) {
 
 float motorSpeedCalculator(float position, int timeInMS) {
   return (position / timeInMS) / 1.372e-6f;
+}
+
+void motor_goto_task(void *pvParameters) {
+  Enc3Menu sel = MENU_AUTO;
+  float targetZ = 0.0f;
+  
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    sel = systemState.enc3MenuSelection;
+    if (sel == MENU_GOTO_TOP) targetZ = systemState.motorLimits[2];
+    else if (sel == MENU_GOTO_MID) targetZ = systemState.motorLimits[1];
+    else if (sel == MENU_GOTO_BOT) targetZ = systemState.motorLimits[0];
+    xSemaphoreGive(systemStateMutex);
+  }
+
+  LCD_setMessage("Auto: GOTO");
+  printf("Starting GOTO target %.2f...\n", targetZ);
+
+  float currentPos = 0.0f;
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    currentPos = systemState.currentPosition;
+    xSemaphoreGive(systemStateMutex);
+  }
+
+  int velocity = (targetZ > currentPos) ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
+  bool goingUp = (velocity > 0);
+
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    systemState.targetSpeed = velocity;
+    xSemaphoreGive(systemStateMutex);
+  }
+
+  bool aborted = false;
+  while (true) {
+    EventBits_t ev = xEventGroupGetBits(controlEvents);
+    if (ev & BIT_ESTOP_REQUEST) {
+      aborted = true;
+      break;
+    }
+
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+      currentPos = systemState.currentPosition;
+      xSemaphoreGive(systemStateMutex);
+    }
+
+    if (goingUp && currentPos >= targetZ) break;
+    if (!goingUp && currentPos <= targetZ) break;
+
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    systemState.targetSpeed = 0;
+    xSemaphoreGive(systemStateMutex);
+  }
+
+  if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    g_encoderState.position[2] = 0;
+    xSemaphoreGive(encoderStateMutex);
+  }
+
+  if (aborted) {
+    LCD_setMessage("GOTO E-STOPPED");
+    xEventGroupClearBits(controlEvents, BIT_ESTOP_REQUEST);
+  } else {
+    LCD_setMessage("GOTO Complete");
+  }
+
+  xEventGroupClearBits(controlEvents, BIT_AUTO_RUNNING);
+  vTaskDelete(NULL);
 }

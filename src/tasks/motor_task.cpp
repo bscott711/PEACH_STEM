@@ -145,17 +145,22 @@ void motor_task(void *parameter) {
         }
       }
 
-      MotorLimitStep step = MOTOR_LIMIT_OFF;
-      float limBot = 0.0f;
-      float limTop = 0.0f;
+      int limitsSetCount = 0;
+      float limBot = 1e9f;
+      float limTop = -1e9f;
+
       if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-        step = systemState.motorLimitStep;
-        limBot = systemState.motorLimitBottom;
-        limTop = systemState.motorLimitTop;
+        for (int i = 0; i < 3; i++) {
+          if (systemState.motorLimitSet[i]) {
+            limitsSetCount++;
+            if (systemState.motorLimits[i] < limBot) limBot = systemState.motorLimits[i];
+            if (systemState.motorLimits[i] > limTop) limTop = systemState.motorLimits[i];
+          }
+        }
         xSemaphoreGive(systemStateMutex);
       }
 
-      if (step == MOTOR_LIMIT_SET_2) {
+      if (limitsSetCount >= 2 && limTop > limBot) {
         if (currentPos <= limBot && targetSpeed < 0) {
           targetSpeed = 0;
           LCD_setMessage("Bottom Reached");
