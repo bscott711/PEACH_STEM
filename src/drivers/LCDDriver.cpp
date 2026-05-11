@@ -242,10 +242,14 @@ static void draw_encoderStatus() {
     u8g2.drawHLine(trackL, trackY, trackR - trackL);
 
     // Tick marks at calibrated start and center positions
-    int startX = map(constrain(servoCalStart, 0, 100), 0, 100, trackL, trackR);
-    int centerX = map(constrain(servoCalCenter, 0, 100), 0, 100, trackL, trackR);
-    u8g2.drawVLine(startX, trackY - 2, 5);
-    u8g2.drawVLine(centerX, trackY - 2, 5);
+    if (servoCalStart != -1) {
+      int startX = map(constrain(servoCalStart, 0, 100), 0, 100, trackL, trackR);
+      u8g2.drawVLine(startX, trackY - 2, 5);
+    }
+    if (servoCalCenter != -1) {
+      int centerX = map(constrain(servoCalCenter, 0, 100), 0, 100, trackL, trackR);
+      u8g2.drawVLine(centerX, trackY - 2, 5);
+    }
 
     // Filled dot at the actual servo position
     int dotX = map(constrain(servoActual, 0, 100), 0, 100, trackL, trackR);

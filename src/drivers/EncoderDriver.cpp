@@ -52,7 +52,6 @@ void init_encoder() {
 
 void EncoderDriver_Service() {
   TickType_t now = xTaskGetTickCount();
-  static TickType_t singleClickPending[4] = {0};
 
   for (int i = 0; i < 4; i++) {
 
@@ -77,28 +76,18 @@ void EncoderDriver_Service() {
           // HIGH = Released
           TickType_t duration = (now - btnPressTime[i]) * portTICK_PERIOD_MS;
 
-          if (duration >= 1000) {
+          if (duration >= 2500) {
+            setDoublePressed = true;
+            ESP_LOGI("ENCODER", "Button %d VERY LONG pressed (clearing pos)", i);
+          } else if (duration >= 800) {
             setLongPressed = true;
-            singleClickPending[i] = 0; // cancel any pending single click
             ESP_LOGI("ENCODER", "Button %d LONG pressed", i);
           } else {
-            if (singleClickPending[i] != 0) {
-              setDoublePressed = true;
-              singleClickPending[i] = 0;
-              ESP_LOGI("ENCODER", "Button %d DOUBLE pressed", i);
-            } else {
-              singleClickPending[i] = now;
-            }
+            setPressed = true;
+            ESP_LOGI("ENCODER", "Button %d pressed", i);
           }
         }
       }
-    }
-
-    // Check if the single click timer has expired
-    if (singleClickPending[i] != 0 && (now - singleClickPending[i]) * portTICK_PERIOD_MS > 250) {
-      setPressed = true;
-      singleClickPending[i] = 0;
-      ESP_LOGI("ENCODER", "Button %d pressed", i);
     }
 
     // 2. Process Encoder Rotation
