@@ -490,26 +490,34 @@ static void handleAutonomousEncoder() {
         xSemaphoreGive(systemStateMutex);
       }
 
-      if (sel == MENU_AUTO) {
-        TaskHandle_t autoTaskHandle = NULL;
-        if (xTaskCreate(autonomous_task, "AutoTask", 4096, NULL, 2,
-                        &autoTaskHandle) == pdPASS) {
-          xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
+      bool canRun = false;
+      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        if (sel == MENU_AUTO) {
+          canRun = systemState.motorLimitSet[0] &&
+                   systemState.motorLimitSet[1] &&
+                   systemState.motorLimitSet[2] &&
+                   (systemState.servoCalStart != -1) &&
+                   (systemState.servoCalCenter != -1);
         } else {
-          LCD_setMessage("Error: Task Failed");
-          ESP_LOGE("CTRL", "Failed to create autonomous_task");
-        }
-      } else {
-        bool canRun = false;
-        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
           int idx = 2;
           if (sel == MENU_GOTO_MID) idx = 1;
           else if (sel == MENU_GOTO_BOT) idx = 0;
           canRun = systemState.motorLimitSet[idx];
-          xSemaphoreGive(systemStateMutex);
         }
+        xSemaphoreGive(systemStateMutex);
+      }
 
-        if (canRun) {
+      if (canRun) {
+        if (sel == MENU_AUTO) {
+          TaskHandle_t autoTaskHandle = NULL;
+          if (xTaskCreate(autonomous_task, "AutoTask", 4096, NULL, 2,
+                          &autoTaskHandle) == pdPASS) {
+            xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
+          } else {
+            LCD_setMessage("Error: Task Failed");
+            ESP_LOGE("CTRL", "Failed to create autonomous_task");
+          }
+        } else {
           TaskHandle_t gotoTaskHandle = NULL;
           if (xTaskCreate(motor_goto_task, "GotoTask", 4096, NULL, 2,
                           &gotoTaskHandle) == pdPASS) {
@@ -517,9 +525,9 @@ static void handleAutonomousEncoder() {
           } else {
             LCD_setMessage("Error: Task Failed");
           }
-        } else {
-          LCD_setMessage("Pos Not Set");
         }
+      } else {
+        LCD_setMessage("Missing Limits");
       }
     } else {
       // Sequence IS running — acts as an E-STOP.
@@ -556,72 +564,65 @@ void controller_task(void *pvParameters) {
 
 void autonomous_task(void *pvParameters) {
   // ---- Sequence Blueprint ----
-  // Read calibration values for servo positions
+  // Read calibration values for servo and stepper positions
   int calStart = 0, calCenter = 50;
+  float limBot = 0.0f, limMid = 0.0f, limTop = 0.0f;
   if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
     calStart = systemState.servoCalStart;
     calCenter = systemState.servoCalCenter;
+    limBot = systemState.motorLimits[0];
+    limMid = systemState.motorLimits[1];
+    limTop = systemState.motorLimits[2];
     xSemaphoreGive(systemStateMutex);
   }
 
   // clang-format off
   const SequenceStep peachSequence[] = {
     // --- Initialize ---
-    {SEQ_MOVE_SERVO,    calStart, 0,              "Auto: Servo Start"},
-    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Retract"},
+    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Retracting"},
+    {SEQ_MOVE_Z,        0,        limTop,         "Auto: To Clearance"},
+    {SEQ_WAIT_MS,       1000,     0,              NULL},
+
+    // --- Move to Aspirate Position ---
+    {SEQ_MOVE_SERVO,    calCenter,0,              "Auto: Servo Center"},
     {SEQ_WAIT_MS,       2500,     0,              NULL},
+    {SEQ_MOVE_Z,        0,        limMid,         "Auto: Descending"},
+    {SEQ_WAIT_MS,       1000,     0,              NULL},
 
-    // --- Move up to clearance height ---
-    {SEQ_MOVE_Z,        0,        Z_CLEARANCE_POS, "Auto: Moving Up"},
-    {SEQ_WAIT_MS,       500,      0,               NULL},
-    {SEQ_WAIT_USER,     0,        0,               "Press Btn to Continue"},
+    // --- Aspiration Mixing (3 Cycles) ---
+    // Push plunger down (100) to expel, Pull (0) to aspirate
+    {SEQ_MOVE_ACTUATOR, 100,      0,              "Auto: Mix 1 (Push)"},
+    {SEQ_WAIT_MS,       750,      0,              NULL},
+    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Mix 1 (Pull)"},
+    {SEQ_WAIT_MS,       750,      0,              NULL},
 
-    // --- Position servo and descend to tube ---
-    {SEQ_MOVE_SERVO,    calStart, 0,               "Auto: Servo Start"},
-    {SEQ_WAIT_MS,       2500,     0,               NULL},
-    {SEQ_MOVE_Z,        0,        Z_TUBE_POS,      "Auto: Down to Tube"},
-    {SEQ_WAIT_MS,       500,      0,               NULL},
+    {SEQ_MOVE_ACTUATOR, 100,      0,              "Auto: Mix 2 (Push)"},
+    {SEQ_WAIT_MS,       750,      0,              NULL},
+    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Mix 2 (Pull)"},
+    {SEQ_WAIT_MS,       750,      0,              NULL},
 
-    // --- Aspiration mixing (3 cycles) ---
-    {SEQ_MOVE_ACTUATOR, 80,       0,               "Auto: Aspiration 1"},
-    {SEQ_WAIT_MS,       750,      0,               NULL},
-    {SEQ_MOVE_ACTUATOR, 0,        0,               NULL},
-    {SEQ_WAIT_MS,       750,      0,               NULL},
-    {SEQ_MOVE_ACTUATOR, 80,       0,               "Auto: Aspiration 2"},
-    {SEQ_WAIT_MS,       750,      0,               NULL},
-    {SEQ_MOVE_ACTUATOR, 0,        0,               NULL},
-    {SEQ_WAIT_MS,       750,      0,               NULL},
-    {SEQ_MOVE_ACTUATOR, 80,       0,               "Auto: Aspiration 3"},
-    {SEQ_WAIT_MS,       750,      0,               NULL},
-    {SEQ_MOVE_ACTUATOR, 0,        0,               NULL},
-    {SEQ_WAIT_MS,       750,      0,               NULL},
+    {SEQ_MOVE_ACTUATOR, 100,      0,              "Auto: Mix 3 (Push)"},
+    {SEQ_WAIT_MS,       750,      0,              NULL},
+    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Aspirating"},
+    {SEQ_WAIT_MS,       1500,     0,              NULL},
 
-    // --- Pickup cells ---
-    {SEQ_MOVE_ACTUATOR, 100,      0,               "Auto: Pickup Cells"},
-    {SEQ_WAIT_MS,       500,      0,               NULL},
-    {SEQ_MOVE_ACTUATOR, 0,        0,               NULL},
-    {SEQ_WAIT_MS,       1000,     0,               NULL},
+    // --- Move to Dispense Position ---
+    {SEQ_MOVE_Z,        0,        limTop,         "Auto: Up to Clearance"},
+    {SEQ_WAIT_MS,       500,      0,              NULL},
+    {SEQ_MOVE_SERVO,    calStart, 0,              "Auto: Servo Start"},
+    {SEQ_WAIT_MS,       1500,     0,              NULL},
+    {SEQ_MOVE_Z,        0,        limBot,         "Auto: Down to Dispense"},
+    {SEQ_WAIT_MS,       1000,     0,              NULL},
 
-    // --- Retract up and rotate to microscope ---
-    {SEQ_MOVE_Z,        0,        Z_CLEARANCE_POS, "Auto: Moving Up"},
-    {SEQ_WAIT_MS,       500,      0,               NULL},
-    {SEQ_MOVE_SERVO,    calCenter, 0,              "Auto: To Microscope"},
-    {SEQ_WAIT_MS,       1000,     0,               NULL},
+    // --- Dispense Cells ---
+    {SEQ_MOVE_ACTUATOR, 100,      0,              "Auto: Dispensing"},
+    {SEQ_WAIT_MS,       1500,     0,              NULL},
 
-    // --- Descend to microscope position ---
-    {SEQ_MOVE_Z,        0,        Z_TUBE_POS,      "Auto: Descending"},
-    {SEQ_WAIT_MS,       500,      0,               NULL},
-
-    // --- Drop cells ---
-    {SEQ_MOVE_ACTUATOR, 100,      0,               "Auto: Dropping Cells"},
-    {SEQ_WAIT_MS,       1000,     0,               NULL},
-
-    // --- Retract and return home ---
-    {SEQ_MOVE_Z,        0,        Z_CLEARANCE_POS, "Auto: Retreating"},
-    {SEQ_WAIT_MS,       500,      0,               NULL},
-    {SEQ_MOVE_ACTUATOR, 0,        0,               "Auto: Reset Actuator"},
-    {SEQ_MOVE_SERVO,    calStart, 0,               "Auto: Reset Servo"},
-    {SEQ_MOVE_Z,        0,        Z_TUBE_POS,      "Auto: Return Home"},
+    // --- Return Home ---
+    {SEQ_MOVE_Z,        0,        limTop,         "Auto: Returning Home"},
+    {SEQ_WAIT_MS,       500,      0,              NULL},
+    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Reset Actuator"},
+    {SEQ_WAIT_MS,       1000,     0,              NULL},
   };
   // clang-format on
 
