@@ -95,7 +95,8 @@ void EncoderDriver_Service() {
     int32_t d = ss.getEncoderDelta(i);
 
     // 3. Update Global State (Mutex Protected)
-    if (setPressed || setDoublePressed || setLongPressed || d != 0) {
+    bool stateChanged = setPressed || setDoublePressed || setLongPressed || (reading != lastBtnLevel[i]) || (d != 0);
+    if (stateChanged) {
       if (xSemaphoreTake(encoderStateMutex, portMAX_DELAY) == pdTRUE) {
         if (setPressed) {
           g_encoderState.buttonPressed[i] = true;
@@ -117,6 +118,10 @@ void EncoderDriver_Service() {
             lastLogTime[i] = now;
           }
         }
+        // Update held state dynamically
+        g_encoderState.buttonHeld[i] = (lastBtnLevel[i] == false);
+        g_encoderState.buttonPressTime[i] = btnPressTime[i];
+
         xSemaphoreGive(encoderStateMutex);
       }
     }

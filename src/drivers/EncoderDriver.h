@@ -18,6 +18,8 @@ typedef struct {
   bool buttonPressed[4];
   bool buttonDoublePressed[4];
   bool buttonLongPressed[4];
+  bool buttonHeld[4];
+  TickType_t buttonPressTime[4];
 } EncoderState;
 
 extern EncoderState g_encoderState;

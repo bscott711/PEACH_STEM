@@ -137,12 +137,25 @@ static void draw_buttonStatus() {
   uint32_t localBtnTime[4] = {0};
 
   // 1. Grab encoder state: clear long-press flags and record press time
+  uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
     for (int i = 0; i < 4; i++) {
       if (g_encoderState.buttonLongPressed[i]) {
         g_encoderState.buttonLongPressed[i] = false;
         // Notify LCD so the icon flashes briefly, same as short press
         LCD_notifyButtonPress(i);
+      }
+      
+      // Live feedback for held buttons
+      if (g_encoderState.buttonHeld[i]) {
+        uint32_t duration = now - (g_encoderState.buttonPressTime[i] * portTICK_PERIOD_MS);
+        if (duration >= 2500) {
+          LCD_setMessage("Very Long Press");
+        } else if (duration >= 800) {
+          LCD_setMessage("Long Press");
+        } else if (duration >= 100) {
+          LCD_setMessage("Press...");
+        }
       }
     }
     xSemaphoreGive(encoderStateMutex);
@@ -159,7 +172,7 @@ static void draw_buttonStatus() {
     xSemaphoreGive(lcdMutex);
   }
 
-  uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+  now = xTaskGetTickCount() * portTICK_PERIOD_MS;
 
   // 3. Render using local copies (no mutexes held during drawing)
   for (int i = 0; i < 4; i++) {
