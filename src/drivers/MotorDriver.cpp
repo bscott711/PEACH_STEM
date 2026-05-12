@@ -11,12 +11,7 @@ void motorDriver::begin(HardwareSerial &serial,
   driver.setMicrostepsPerStep(16);
   driver.setCoolStepDurationThreshold(0);
 
-  int initialThreshold = 16;
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    initialThreshold = systemState.sgThreshold;
-    xSemaphoreGive(systemStateMutex);
-  }
-  driver.setStallGuardThreshold(initialThreshold);
+  driver.setStallGuardThreshold(16);
 
   driver.enable();
 

@@ -2,6 +2,7 @@
 #include "controller.h" // Gives access to encoderStateMutex
 #include <Adafruit_seesaw.h>
 #include <esp_log.h>
+#include <Preferences.h>
 
 static Adafruit_seesaw ss(&Wire);
 
@@ -44,9 +45,16 @@ void init_encoder() {
   }
 
   // Override encoder 0 to match saved servo start position
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    g_encoderState.position[0] = systemState.servoCalStart;
-    xSemaphoreGive(systemStateMutex);
+  Preferences prefs;
+  prefs.begin("peach", true);
+  int savedStart = prefs.getInt("srvStart", -1);
+  prefs.end();
+
+  if (savedStart != -1) {
+    if (xSemaphoreTake(encoderStateMutex, portMAX_DELAY) == pdTRUE) {
+      g_encoderState.position[0] = savedStart;
+      xSemaphoreGive(encoderStateMutex);
+    }
   }
 }
 

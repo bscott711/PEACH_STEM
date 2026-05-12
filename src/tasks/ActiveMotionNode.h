@@ -4,6 +4,11 @@
 #include <freertos/queue.h>
 #include <stdint.h>
 
+// Default task update interval in milliseconds (can be overridden per-node)
+#ifndef TASK_UPDATE_INTERVAL_MS
+#define TASK_UPDATE_INTERVAL_MS 10
+#endif
+
 /**
  * @brief Active Object pattern base class for motion control subsystems.
  * 
@@ -169,10 +174,4 @@ public:
     /**
      * @brief Get the telemetry queue handle for direct access.
      */
-    QueueHandle_t getTelQueue() const { return telQueue; }
 };
-
-// Default task update interval in milliseconds (can be overridden per-node)
-#ifndef TASK_UPDATE_INTERVAL_MS
-#define TASK_UPDATE_INTERVAL_MS 10
-#endif
