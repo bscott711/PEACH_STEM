@@ -7,7 +7,7 @@ static const char* TAG = "ACTUATOR_NODE";
 ActuatorNode::ActuatorNode()
     : currentPercent(0.0f)
     , targetPercent(0)
-    , pctPerTick(0.0f) {
+    , currentSpeedMode(ActSpeed::FAST) {
     limits[0] = 0; limits[1] = 0; limits[2] = 0;
     limitSet[0] = false; limitSet[1] = false; limitSet[2] = false;
 }
@@ -25,10 +25,6 @@ void ActuatorNode::hwInit() {
     HBridge_Set(ACT_REVERSE);
     vTaskDelay(pdMS_TO_TICKS(FULL_EXTEND_TIME_MS));
     HBridge_Set(ACT_STOP);
-    
-    // Calculate percentage traveled per task tick
-    // e.g., (100.0 * 10ms) / 1000ms = 1.0% per tick
-    pctPerTick = (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / (float)FULL_EXTEND_TIME_MS;
     
     // Open NVS namespace for limit storage
     if (!preferences.begin("peach", false)) {
@@ -53,7 +49,8 @@ void ActuatorNode::processCommand(const ActuatorCommand& cmd) {
     switch (cmd.action) {
         case ActuatorCmdAction::SET_TARGET:
             targetPercent = constrain(cmd.value, 0, 100);
-            ESP_LOGD(TAG, "Set target: %d%%", targetPercent);
+            currentSpeedMode = cmd.speed;
+            ESP_LOGD(TAG, "Set target: %d%% at %s speed", targetPercent, (currentSpeedMode == ActSpeed::FAST) ? "FAST" : "SLOW");
             break;
             
         case ActuatorCmdAction::SET_LIMIT_BOT:
@@ -96,19 +93,23 @@ void ActuatorNode::processCommand(const ActuatorCommand& cmd) {
 }
 
 void ActuatorNode::hwUpdate() {
+    uint32_t extendTime = (currentSpeedMode == ActSpeed::FAST) ? 1000 : 4000;
+    float dynamicPctPerTick = (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / (float)extendTime;
+    uint8_t pwmVal = (currentSpeedMode == ActSpeed::FAST) ? 255 : 64;
+
     // Non-blocking movement evaluation with float-based ramping
     if (currentPercent < targetPercent) {
-        currentPercent += pctPerTick;
+        currentPercent += dynamicPctPerTick;
         if (currentPercent > targetPercent) {
             currentPercent = targetPercent;  // Clamp exact arrival
         }
-        HBridge_Set(ACT_FORWARD);
+        HBridge_Set(ACT_FORWARD, pwmVal);
     } else if (currentPercent > targetPercent) {
-        currentPercent -= pctPerTick;
+        currentPercent -= dynamicPctPerTick;
         if (currentPercent < targetPercent) {
             currentPercent = targetPercent;  // Clamp exact arrival
         }
-        HBridge_Set(ACT_REVERSE);
+        HBridge_Set(ACT_REVERSE, pwmVal);
     } else {
         HBridge_Set(ACT_STOP);
     }
@@ -124,13 +125,15 @@ ActuatorTelemetry ActuatorNode::generateTelemetry() {
     tel.limitSet[0] = limitSet[0];
     tel.limitSet[1] = limitSet[1];
     tel.limitSet[2] = limitSet[2];
+    tel.speed = currentSpeedMode;
     return tel;
 }
 
-bool ActuatorNode::setTarget(int percent) {
+bool ActuatorNode::setTarget(int percent, ActSpeed speed) {
     ActuatorCommand cmd;
     cmd.action = ActuatorCmdAction::SET_TARGET;
     cmd.value = percent;
+    cmd.speed = speed;
     return sendCommand(cmd);
 }
 

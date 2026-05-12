@@ -30,7 +30,7 @@ SemaphoreHandle_t encoderStateMutex;
 EventGroupHandle_t controlEvents;
 
 SystemState systemState = {.mode = IDLE,
-                           .enc1MenuSelection = MENU_ACT_AUTO,
+                           .enc1MenuSelection = MENU_ACT_MAN_FAST,
                            .enc3MenuSelection = MENU_AUTO,
                            .collisionDetected = false,
                            .collisionTimestamp = 0};
@@ -49,7 +49,7 @@ void initSystemState() {
   // Initialize minimal state - subsystem state is managed by Active Nodes
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
     systemState.mode = IDLE;
-    systemState.enc1MenuSelection = MENU_ACT_AUTO;
+    systemState.enc1MenuSelection = MENU_ACT_MAN_FAST;
     systemState.enc3MenuSelection = MENU_AUTO;
     systemState.collisionDetected = false;
     xSemaphoreGive(systemStateMutex);
@@ -291,7 +291,8 @@ static void handleActuatorEncoder() {
   if (d1 != currentPos) {
     d1 = currentPos;
     int targetPct = d1 * ACTUATOR_STEP_PERCENT;
-    g_actuatorNode.setTarget(targetPct);
+    ActSpeed s = (systemState.enc1MenuSelection == MENU_ACT_MAN_SLOW) ? ActSpeed::SLOW : ActSpeed::FAST;
+    g_actuatorNode.setTarget(targetPct, s);
   }
 
   // 2. Short Press: Cycle Menu and Execute GOTO
@@ -300,18 +301,18 @@ static void handleActuatorEncoder() {
     
     Enc1Menu sel = systemState.enc1MenuSelection;
     int newSel = (int)sel + 1;
-    if (newSel > 3) newSel = 0;
+    if (newSel > 4) newSel = 0; // 5 menu items (0-4)
     systemState.enc1MenuSelection = (Enc1Menu)newSel;
     
     // Auto-GOTO if the limit is set
     if (newSel == MENU_ACT_GOTO_TOP && actLimitSet[2]) {
-      g_actuatorNode.setTarget(actLimits[2]);
+      g_actuatorNode.setTarget(actLimits[2], ActSpeed::FAST);
       d1 = actLimits[2] / ACTUATOR_STEP_PERCENT;
     } else if (newSel == MENU_ACT_GOTO_MID && actLimitSet[1]) {
-      g_actuatorNode.setTarget(actLimits[1]);
+      g_actuatorNode.setTarget(actLimits[1], ActSpeed::FAST);
       d1 = actLimits[1] / ACTUATOR_STEP_PERCENT;
     } else if (newSel == MENU_ACT_GOTO_BOT && actLimitSet[0]) {
-      g_actuatorNode.setTarget(actLimits[0]);
+      g_actuatorNode.setTarget(actLimits[0], ActSpeed::FAST);
       d1 = actLimits[0] / ACTUATOR_STEP_PERCENT;
     }
     
@@ -325,7 +326,7 @@ static void handleActuatorEncoder() {
   // 3. Long Press: Set Limit
   if (longPress) {
     Enc1Menu sel = systemState.enc1MenuSelection;
-    if (sel != MENU_ACT_AUTO) {
+    if (sel != MENU_ACT_MAN_FAST && sel != MENU_ACT_MAN_SLOW) {
       int idx = 2; // Default GOTO_TOP
       if (sel == MENU_ACT_GOTO_MID) idx = 1;
       else if (sel == MENU_ACT_GOTO_BOT) idx = 0;
@@ -347,7 +348,7 @@ static void handleActuatorEncoder() {
   // 4. Double Press: Clear Limit
   if (doublePress) {
     Enc1Menu sel = systemState.enc1MenuSelection;
-    if (sel != MENU_ACT_AUTO) {
+    if (sel != MENU_ACT_MAN_FAST && sel != MENU_ACT_MAN_SLOW) {
       int idx = 2;
       if (sel == MENU_ACT_GOTO_MID) idx = 1;
       else if (sel == MENU_ACT_GOTO_BOT) idx = 0;

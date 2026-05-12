@@ -14,6 +14,7 @@ private:
     // High-resolution position tracking (float percent for smooth ramping)
     float currentPercent;
     int targetPercent;
+    ActSpeed currentSpeedMode;
     
     // Limit positions (NVS persisted)
     int limits[3];       // [0]=Bot, [1]=Mid, [2]=Top
@@ -24,7 +25,6 @@ private:
     
     // Motion parameters
     static constexpr uint32_t FULL_EXTEND_TIME_MS = 1000;  // Time 0% to 100%
-    float pctPerTick;
     
 public:
     ActuatorNode();
@@ -37,7 +37,7 @@ public:
     ActuatorTelemetry generateTelemetry() override;
     
     // Convenience methods for sending commands
-    bool setTarget(int percent);
+    bool setTarget(int percent, ActSpeed speed = ActSpeed::FAST);
     bool setLimitBot(int percent);
     bool setLimitMid(int percent);
     bool setLimitTop(int percent);

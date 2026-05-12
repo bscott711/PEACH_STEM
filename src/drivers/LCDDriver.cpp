@@ -202,7 +202,7 @@ static void draw_encoderStatus() {
   static bool motorLimitSet[3] = {false, false, false};
   static float currentPos = 0.0f;
   static Enc3Menu enc3MenuSelection = MENU_AUTO;
-  static Enc1Menu enc1MenuSelection = MENU_ACT_AUTO;
+  static Enc1Menu enc1MenuSelection = MENU_ACT_MAN_FAST;
 
   // 1. Read motion subsystem state via lock-free telemetry queues
   ServoTelemetry srvTel;
@@ -275,8 +275,11 @@ static void draw_encoderStatus() {
   }
 
   // Encoder 1: Actuator — Row at y=20, text baseline y=26
-  if (enc1MenuSelection == MENU_ACT_AUTO) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S1:Act:%03d%%",
+  if (enc1MenuSelection == MENU_ACT_MAN_FAST) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S1:Fast:%03d%%",
+             actuatorTarget);
+  } else if (enc1MenuSelection == MENU_ACT_MAN_SLOW) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S1:Slow:%03d%%",
              actuatorTarget);
   } else if (enc1MenuSelection == MENU_ACT_GOTO_TOP) {
     snprintf(statusBuffer, sizeof(statusBuffer), "S1:ToTop:%03d%%",

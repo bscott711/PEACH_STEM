@@ -47,9 +47,12 @@ enum class ActuatorCmdAction {
     GET_LIMITS       // Request limit data (for telemetry response)
 };
 
+enum class ActSpeed { FAST, SLOW };
+
 struct ActuatorCommand {
     ActuatorCmdAction action;
     int value;       // Target percent or limit index
+    ActSpeed speed;
 };
 
 struct ActuatorTelemetry {
@@ -57,6 +60,7 @@ struct ActuatorTelemetry {
     int targetPercent;       // Current target
     int limits[3];           // [0]=Bot, [1]=Mid, [2]=Top
     bool limitSet[3];        // Whether each limit is configured
+    ActSpeed speed;
 };
 
 extern QueueHandle_t actuatorCmdQueue;
