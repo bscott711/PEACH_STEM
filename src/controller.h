@@ -3,6 +3,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 #include <freertos/semphr.h>
+#include <freertos/queue.h>
 #include <stdint.h>
 
 // --- Configuration & Magic Numbers ---
@@ -48,53 +49,15 @@ struct SequenceStep {
   const char *message; // LCD message (NULL = no update)
 };
 
+// Minimal SystemState - only controller-level state, no subsystem tracking
 struct SystemState {
   DeviceMode mode;
-
-  // Manual Servo Control
-  bool servoAdjustMode;
-  bool servoActive;
-  int servoPercent;
-  int servoTargetPercent;
-
-  // Servo Calibration (NVS-persisted)
-  int servoCalStart;  // Raw percent for "start" position
-  int servoCalCenter; // Raw percent for "center" position
-  ServoCalibrationStep servoCalStep;
-
-  // Linear Actuator
-  ActuatorDirection actuatorDir;
-  int actuatorTargetPercent;
-  int actuatorPercent; // Actual physical position (updated by actuator_task)
-
-  // Actuator Limits (0=Bot, 1=Mid, 2=Top)
-  int actuatorLimits[3];
-  bool actuatorLimitSet[3];
+  
+  // Controller state only (subsystem state moved to Active Nodes)
   Enc1Menu enc1MenuSelection;
-
-  // Stepper Motor
-  int actualSpeed;
-  int targetSpeed;
-
-  bool isHoming;
-  bool sgDiagMode;
-
-  // StallGuard Threshold for live tuning
-  int sgThreshold;
-
-  // Motor Position Tracking
-  float currentPosition;
-  bool isHomed;
-  int motorEncoderLimit;
-
-  // Motor Limits (0=Bot, 1=Mid, 2=Top)
-  float motorLimits[3];
-  bool motorLimitSet[3];
-
-  // Encoder 3 Menu State
   Enc3Menu enc3MenuSelection;
-
-  // Collision Detection
+  
+  // Collision Detection (shared flag)
   bool collisionDetected;
   uint32_t collisionTimestamp;
 };
@@ -103,6 +66,14 @@ extern SystemState systemState;
 extern SemaphoreHandle_t systemStateMutex;
 extern SemaphoreHandle_t encoderStateMutex;
 extern EventGroupHandle_t controlEvents;
+
+// Queue handles declared in controller.cpp, extern here for access
+extern QueueHandle_t servoCmdQueue;
+extern QueueHandle_t servoTelQueue;
+extern QueueHandle_t actuatorCmdQueue;
+extern QueueHandle_t actuatorTelQueue;
+extern QueueHandle_t motorCmdQueue;
+extern QueueHandle_t motorTelQueue;
 
 void initSystemState();
 void saveMotorState();

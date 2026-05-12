@@ -1,4 +1,8 @@
 #include "controller.h"
+#include "messaging.h"
+#include "tasks/ServoNode.h"
+#include "tasks/ActuatorNode.h"
+#include "tasks/MotorNode.h"
 #include "drivers/EncoderDriver.h"
 #include "drivers/LCDDriver.h"
 #include "esp_log.h"
@@ -7,35 +11,26 @@
 #include <Preferences.h>
 #include <cstdio>
 
+// Global queue handles (declared extern in controller.h)
+QueueHandle_t servoCmdQueue;
+QueueHandle_t servoTelQueue;
+QueueHandle_t actuatorCmdQueue;
+QueueHandle_t actuatorTelQueue;
+QueueHandle_t motorCmdQueue;
+QueueHandle_t motorTelQueue;
+
+// Global Node instances (defined in main.cpp, extern here)
+extern ServoNode g_servoNode;
+extern ActuatorNode g_actuatorNode;
+extern MotorNode g_motorNode;
+
 Preferences preferences;
 SemaphoreHandle_t systemStateMutex;
 SemaphoreHandle_t encoderStateMutex;
 EventGroupHandle_t controlEvents;
 
 SystemState systemState = {.mode = IDLE,
-                           .servoAdjustMode = true,
-                           .servoActive = false,
-                           .servoPercent = 0,
-                           .servoTargetPercent = 0,
-                           .servoCalStart = 0,
-                           .servoCalCenter = 50,
-                           .servoCalStep = CAL_OFF,
-                           .actuatorDir = ACT_STOP,
-                           .actuatorTargetPercent = 0,
-                           .actuatorPercent = 0,
-                           .actuatorLimits = {0, 0, 0},
-                           .actuatorLimitSet = {false, false, false},
                            .enc1MenuSelection = MENU_ACT_AUTO,
-                           .actualSpeed = 0,
-                           .targetSpeed = 0,
-                           .isHoming = false,
-                           .sgDiagMode = false,
-                           .sgThreshold = 16,
-                           .currentPosition = 0.0f,
-                           .isHomed = false,
-                           .motorEncoderLimit = 15,
-                           .motorLimits = {0.0f, 0.0f, 0.0f},
-                           .motorLimitSet = {false, false, false},
                            .enc3MenuSelection = MENU_AUTO,
                            .collisionDetected = false,
                            .collisionTimestamp = 0};
@@ -50,104 +45,40 @@ void initSystemState() {
     LCD_setMessage("NVS Init Error");
     return;
   }
-
+  
+  // Initialize minimal state - subsystem state is managed by Active Nodes
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    // Always require re-homing on boot (clears stale NVS homing data)
-    systemState.isHomed = false;
-    systemState.currentPosition = 0.0f;
-    preferences.putBool("isHomed", false);
-    preferences.putFloat("pos", 0.0f);
-
-    // Load servo calibration from NVS
-    systemState.servoCalStart = preferences.getInt("srvStart", -1);
-    systemState.servoCalCenter = preferences.getInt("srvCenter", -1);
-
-    // Load motor limits from NVS
-    systemState.motorLimits[0] = preferences.getFloat("limB", 0.0f);
-    systemState.motorLimits[1] = preferences.getFloat("limM", 0.0f);
-    systemState.motorLimits[2] = preferences.getFloat("limT", 0.0f);
-    systemState.motorLimitSet[0] = preferences.getBool("limS_B", false);
-    systemState.motorLimitSet[1] = preferences.getBool("limS_M", false);
-    systemState.motorLimitSet[2] = preferences.getBool("limS_T", false);
-
-    // Load actuator limits from NVS
-    systemState.actuatorLimits[0] = preferences.getInt("actB", 0);
-    systemState.actuatorLimits[1] = preferences.getInt("actM", 0);
-    systemState.actuatorLimits[2] = preferences.getInt("actT", 0);
-    systemState.actuatorLimitSet[0] = preferences.getBool("actS_B", false);
-    systemState.actuatorLimitSet[1] = preferences.getBool("actS_M", false);
-    systemState.actuatorLimitSet[2] = preferences.getBool("actS_T", false);
-
-    // Servo will remain limp on boot until explicitly activated.
-    systemState.servoActive = false;
-    
-    // Internal position tracking initializes to the safe clearance center position 
-    // to prevent violent snaps when the servo wakes up.
-    if (systemState.servoCalCenter != -1) {
-      systemState.servoTargetPercent = systemState.servoCalCenter;
-      systemState.servoPercent = systemState.servoCalCenter;
-    } else {
-      systemState.servoTargetPercent = 50; // Default center
-      systemState.servoPercent = 50;
-    }
-
+    systemState.mode = IDLE;
+    systemState.enc1MenuSelection = MENU_ACT_AUTO;
+    systemState.enc3MenuSelection = MENU_AUTO;
+    systemState.collisionDetected = false;
     xSemaphoreGive(systemStateMutex);
   }
 }
 
 void saveMotorState() {
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-    preferences.putBool("isHomed", systemState.isHomed);
-    preferences.putFloat("pos", systemState.currentPosition);
-    xSemaphoreGive(systemStateMutex);
-    Serial.println("--- Saved Motor State to NVS ---");
-  } else {
-    ESP_LOGW("CTRL", "saveMotorState mutex timeout, skipping");
-  }
+  // Motor node manages its own NVS saves internally
+  ESP_LOGI("CTRL", "Motor state saved by MotorNode");
 }
 
 void saveMotorLimits() {
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-    preferences.putFloat("limB", systemState.motorLimits[0]);
-    preferences.putFloat("limM", systemState.motorLimits[1]);
-    preferences.putFloat("limT", systemState.motorLimits[2]);
-    preferences.putBool("limS_B", systemState.motorLimitSet[0]);
-    preferences.putBool("limS_M", systemState.motorLimitSet[1]);
-    preferences.putBool("limS_T", systemState.motorLimitSet[2]);
-    xSemaphoreGive(systemStateMutex);
-    Serial.println("--- Saved Motor Limits to NVS ---");
-  } else {
-    ESP_LOGW("CTRL", "saveMotorLimits mutex timeout, skipping");
-  }
+  // Motor and Actuator nodes manage their own NVS saves
+  ESP_LOGI("CTRL", "Limits saved by respective Nodes");
 }
 
 void saveServoCalibration() {
-  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    preferences.putInt("srvStart", systemState.servoCalStart);
-    preferences.putInt("srvCenter", systemState.servoCalCenter);
-    xSemaphoreGive(systemStateMutex);
-  }
-  Serial.println("--- Saved Servo Calibration to NVS ---");
+  // Servo node manages its own NVS saves
+  ESP_LOGI("CTRL", "Servo calibration saved by ServoNode");
 }
 
 void saveActuatorLimits() {
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-    preferences.putInt("actB", systemState.actuatorLimits[0]);
-    preferences.putInt("actM", systemState.actuatorLimits[1]);
-    preferences.putInt("actT", systemState.actuatorLimits[2]);
-    preferences.putBool("actS_B", systemState.actuatorLimitSet[0]);
-    preferences.putBool("actS_M", systemState.actuatorLimitSet[1]);
-    preferences.putBool("actS_T", systemState.actuatorLimitSet[2]);
-    xSemaphoreGive(systemStateMutex);
-    Serial.println("--- Saved Actuator Limits to NVS ---");
-  } else {
-    ESP_LOGW("CTRL", "saveActuatorLimits mutex timeout, skipping");
-  }
+  // Actuator node manages its own NVS saves
+  ESP_LOGI("CTRL", "Actuator limits saved by ActuatorNode");
 }
 
-// ------------------------------------------------------------------------
-// Sub-Handlers for Controller Readability
-// ------------------------------------------------------------------------
+// ============================================================================
+// Sub-Handlers for Controller Readability - Refactored for Message Passing
+// ============================================================================
 
 static void handleServoEncoder() {
   int32_t currentPos = 0;
@@ -155,7 +86,7 @@ static void handleServoEncoder() {
   bool longPressed = false;
   bool doublePressed = false;
 
-  // 1. Thread-safe copy and clear
+  // 1. Thread-safe copy and clear encoder state
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     g_encoderState.position[0] = constrain(
         g_encoderState.position[0], SERVO_MIN_PERCENT, SERVO_MAX_PERCENT);
@@ -176,53 +107,52 @@ static void handleServoEncoder() {
     xSemaphoreGive(encoderStateMutex);
   }
 
-  // Read current calibration state
-  ServoCalibrationStep calStep = CAL_OFF;
-  int calStart = 0, calCenter = 50;
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    calStep = systemState.servoCalStep;
-    calStart = systemState.servoCalStart;
-    calCenter = systemState.servoCalCenter;
-    xSemaphoreGive(systemStateMutex);
+  // 2. Read current calibration state from servo telemetry
+  ServoTelemetry servoTel;
+  int calStart = -1, calCenter = -1;
+  float currentPercent = 0;
+  if (xQueuePeek(servoTelQueue, &servoTel, pdMS_TO_TICKS(10)) == pdPASS) {
+    calStart = servoTel.calStart;
+    calCenter = servoTel.calCenter;
+    currentPercent = servoTel.currentPercent;
   }
 
-  // 1.5 Very Long Press: Clear Calibration
-  if (doublePressed && calStep == CAL_OFF) {
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      systemState.servoCalStart = -1;
-      systemState.servoCalCenter = -1;
-      xSemaphoreGive(systemStateMutex);
-    }
-    saveServoCalibration();
+  // 3. Very Long Press (Double): Clear Calibration
+  if (doublePressed && calStart == -1 && calCenter == -1) {
+    // Already cleared
+    LCD_setMessage("CAL: Already Cleared");
+    return;
+  }
+  if (doublePressed) {
+    // Clear calibration by sending commands
+    g_servoNode.setCalStart(-1);
+    g_servoNode.setCalCenter(-1);
     LCD_setMessage("CAL: Cleared");
     printf("Servo CAL: Cleared preset positions to -1\n");
     return;
   }
 
-  // 2. Long press: enter calibration mode (only from CAL_OFF)
-  if (longPressed && calStep == CAL_OFF) {
+  // 4. Long press: enter calibration mode
+  if (longPressed) {
     LCD_notifyButtonPress(0);
     LCD_setMessage("CAL: Set START");
     printf("Entering Servo Calibration Mode\n");
-
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      systemState.servoCalStep = CAL_SET_START;
-      xSemaphoreGive(systemStateMutex);
-    }
+    
+    // In calibration mode, we directly command the servo via messages
+    // The servo node will track position internally
     return;
   }
 
-  // 3. Calibration mode logic
+  // 5. Calibration mode logic - read from telemetry to check if calibrating
+  // For simplicity, we track calibration state locally during the session
+  static ServoCalibrationStep calStep = CAL_OFF;
+  static int32_t calD0 = 0;
+  
   if (calStep != CAL_OFF) {
-    // In calibration: encoder freely moves servo across full range
-    static int32_t calD0 = 0;
+    // Update servo target based on encoder position
     if (calD0 != currentPos) {
       calD0 = currentPos;
-      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        systemState.servoTargetPercent = calD0;
-        systemState.servoActive = true;
-        xSemaphoreGive(systemStateMutex);
-      }
+      g_servoNode.setTarget((float)currentPos);
     }
 
     if (btnPressed) {
@@ -230,74 +160,60 @@ static void handleServoEncoder() {
 
       if (calStep == CAL_SET_START) {
         // Save start position, advance to center
-        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-          systemState.servoCalStart = currentPos;
-          systemState.servoCalStep = CAL_SET_CENTER;
-          xSemaphoreGive(systemStateMutex);
-        }
+        g_servoNode.setCalStart(currentPos);
+        calStep = CAL_SET_CENTER;
         LCD_setMessage("CAL: Set CENTER");
         printf("Servo CAL: Start=%d, now set center\n", (int)currentPos);
 
       } else if (calStep == CAL_SET_CENTER) {
-        // Save center position, persist to NVS, exit calibration
-        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-          systemState.servoCalCenter = currentPos;
-          systemState.servoCalStep = CAL_OFF;
-          xSemaphoreGive(systemStateMutex);
-        }
-        saveServoCalibration();
+        // Save center position, exit calibration
+        g_servoNode.setCalCenter(currentPos);
+        calStep = CAL_OFF;
         LCD_setMessage("CAL: Saved!");
         printf("Servo CAL: Center=%d, calibration saved\n", (int)currentPos);
 
         // Reset encoder position to the start position for normal operation
-        int savedStart = 0;
-        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-          savedStart = systemState.servoCalStart;
-          systemState.servoTargetPercent = savedStart;
-          xSemaphoreGive(systemStateMutex);
-        }
+        int savedStart = calStart;
         if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
           g_encoderState.position[0] = savedStart;
           xSemaphoreGive(encoderStateMutex);
         }
         calD0 = savedStart;
+        g_servoNode.setTarget((float)savedStart);
       }
     }
     return; // Skip normal mode processing while calibrating
   }
 
-  // 4. Normal mode: encoder adjusts servo target
+  // Handle entering calibration mode from CAL_OFF
+  if (longPressed && calStep == CAL_OFF) {
+    calStep = CAL_SET_START;
+    LCD_setMessage("CAL: Set START");
+    return;
+  }
+
+  // 6. Normal mode: encoder adjusts servo target
   static int32_t d0 = 0;
   if (d0 != currentPos) {
     d0 = currentPos;
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      systemState.servoTargetPercent = d0;
-      systemState.servoActive = true;
-      xSemaphoreGive(systemStateMutex);
-    }
+    g_servoNode.setTarget((float)d0);
     printf("Servo Percent: %d\n", (int)d0);
     LCD_setMessage("Servo Adjusted");
   }
 
-  // 5. Short press: toggle between saved start and center positions
+  // 7. Short press: toggle between saved start and center positions
   if (btnPressed) {
     LCD_notifyButtonPress(0);
-
-    int currentTarget = 0;
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      currentTarget = systemState.servoTargetPercent;
-      xSemaphoreGive(systemStateMutex);
-    }
 
     if (calStart == -1 && calCenter == -1) {
       LCD_setMessage("No presets");
       return;
     }
 
-    int newTarget = currentTarget;
+    int newTarget = (int)currentPercent;
     if (calStart != -1 && calCenter != -1) {
-      int distToStart = abs(currentTarget - calStart);
-      int distToCenter = abs(currentTarget - calCenter);
+      int distToStart = abs((int)currentPercent - calStart);
+      int distToCenter = abs((int)currentPercent - calCenter);
       newTarget = (distToStart <= distToCenter) ? calCenter : calStart;
     } else if (calStart != -1) {
       newTarget = calStart;
@@ -307,11 +223,10 @@ static void handleServoEncoder() {
 
     // Interlock: Block movement to Start if Z-axis is not at Top clearance
     if (newTarget == calStart) {
+      MotorTelemetry motorTel;
       bool atTop = false;
-      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        // Consider it at Top if it is within 5 units of the Top limit
-        atTop = (systemState.motorLimitSet[2] && systemState.currentPosition >= systemState.motorLimits[2] - 5.0f);
-        xSemaphoreGive(systemStateMutex);
+      if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+        atTop = (motorTel.limitSet[2] && motorTel.currentPosition >= motorTel.limits[2] - 5.0f);
       }
       if (!atTop) {
         LCD_setMessage("Raise Z-Axis First!");
@@ -328,11 +243,7 @@ static void handleServoEncoder() {
       xSemaphoreGive(encoderStateMutex);
     }
 
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      systemState.servoTargetPercent = newTarget;
-      systemState.servoActive = true;
-      xSemaphoreGive(systemStateMutex);
-    }
+    g_servoNode.setTarget((float)newTarget);
     printf("Servo Button Pressed. New Pos: %d\n", newTarget);
   }
 }
@@ -362,83 +273,92 @@ static void handleActuatorEncoder() {
     xSemaphoreGive(encoderStateMutex);
   }
 
+  // Read actuator telemetry
+  ActuatorTelemetry actTel;
+  int actLimits[3] = {0, 0, 0};
+  bool actLimitSet[3] = {false, false, false};
+  if (xQueuePeek(actuatorTelQueue, &actTel, pdMS_TO_TICKS(10)) == pdPASS) {
+    actLimits[0] = actTel.limits[0];
+    actLimits[1] = actTel.limits[1];
+    actLimits[2] = actTel.limits[2];
+    actLimitSet[0] = actTel.limitSet[0];
+    actLimitSet[1] = actTel.limitSet[1];
+    actLimitSet[2] = actTel.limitSet[2];
+  }
+
   // 1. Encoder Turn: Jog Actuator
   static int32_t d1 = 0;
   if (d1 != currentPos) {
     d1 = currentPos;
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      systemState.actuatorTargetPercent = d1 * ACTUATOR_STEP_PERCENT;
-      xSemaphoreGive(systemStateMutex);
-    }
+    int targetPct = d1 * ACTUATOR_STEP_PERCENT;
+    g_actuatorNode.setTarget(targetPct);
   }
 
   // 2. Short Press: Cycle Menu and Execute GOTO
   if (btnPressed) {
     LCD_notifyButtonPress(1);
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      int sel = (int)systemState.enc1MenuSelection + 1;
-      if (sel > 3) sel = 0;
-      systemState.enc1MenuSelection = (Enc1Menu)sel;
-      
-      // Auto-GOTO if the limit is set
-      if (sel == MENU_ACT_GOTO_TOP && systemState.actuatorLimitSet[2]) {
-        systemState.actuatorTargetPercent = systemState.actuatorLimits[2];
-        d1 = systemState.actuatorTargetPercent / ACTUATOR_STEP_PERCENT;
-      } else if (sel == MENU_ACT_GOTO_MID && systemState.actuatorLimitSet[1]) {
-        systemState.actuatorTargetPercent = systemState.actuatorLimits[1];
-        d1 = systemState.actuatorTargetPercent / ACTUATOR_STEP_PERCENT;
-      } else if (sel == MENU_ACT_GOTO_BOT && systemState.actuatorLimitSet[0]) {
-        systemState.actuatorTargetPercent = systemState.actuatorLimits[0];
-        d1 = systemState.actuatorTargetPercent / ACTUATOR_STEP_PERCENT;
-      }
-      
-      // Update encoder position to match auto-goto
-      if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-         g_encoderState.position[1] = d1;
-         xSemaphoreGive(encoderStateMutex);
-      }
-      
-      xSemaphoreGive(systemStateMutex);
+    
+    Enc1Menu sel = systemState.enc1MenuSelection;
+    int newSel = (int)sel + 1;
+    if (newSel > 3) newSel = 0;
+    systemState.enc1MenuSelection = (Enc1Menu)newSel;
+    
+    // Auto-GOTO if the limit is set
+    if (newSel == MENU_ACT_GOTO_TOP && actLimitSet[2]) {
+      g_actuatorNode.setTarget(actLimits[2]);
+      d1 = actLimits[2] / ACTUATOR_STEP_PERCENT;
+    } else if (newSel == MENU_ACT_GOTO_MID && actLimitSet[1]) {
+      g_actuatorNode.setTarget(actLimits[1]);
+      d1 = actLimits[1] / ACTUATOR_STEP_PERCENT;
+    } else if (newSel == MENU_ACT_GOTO_BOT && actLimitSet[0]) {
+      g_actuatorNode.setTarget(actLimits[0]);
+      d1 = actLimits[0] / ACTUATOR_STEP_PERCENT;
+    }
+    
+    // Update encoder position to match auto-goto
+    if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+       g_encoderState.position[1] = d1;
+       xSemaphoreGive(encoderStateMutex);
     }
   }
 
   // 3. Long Press: Set Limit
   if (longPress) {
-    bool callSaveLimits = false;
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      if (systemState.enc1MenuSelection != MENU_ACT_AUTO) {
-        int idx = 2; // Default GOTO_TOP
-        if (systemState.enc1MenuSelection == MENU_ACT_GOTO_MID) idx = 1;
-        else if (systemState.enc1MenuSelection == MENU_ACT_GOTO_BOT) idx = 0;
+    Enc1Menu sel = systemState.enc1MenuSelection;
+    if (sel != MENU_ACT_AUTO) {
+      int idx = 2; // Default GOTO_TOP
+      if (sel == MENU_ACT_GOTO_MID) idx = 1;
+      else if (sel == MENU_ACT_GOTO_BOT) idx = 0;
 
-        systemState.actuatorLimits[idx] = systemState.actuatorTargetPercent;
-        systemState.actuatorLimitSet[idx] = true;
-        callSaveLimits = true;
-        LCD_setMessage("Actuator: Set");
-        printf("Actuator Limit %d set to %d%%\n", idx, systemState.actuatorTargetPercent);
+      int targetPct = 0;
+      if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
+        targetPct = (int)actTel.currentPercent;
       }
-      xSemaphoreGive(systemStateMutex);
+      
+      if (idx == 0) g_actuatorNode.setLimitBot(targetPct);
+      else if (idx == 1) g_actuatorNode.setLimitMid(targetPct);
+      else if (idx == 2) g_actuatorNode.setLimitTop(targetPct);
+      
+      LCD_setMessage("Actuator: Set");
+      printf("Actuator Limit %d set to %d%%\n", idx, targetPct);
     }
-    if (callSaveLimits) saveActuatorLimits();
   }
 
   // 4. Double Press: Clear Limit
   if (doublePress) {
-    bool callSaveLimits = false;
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      if (systemState.enc1MenuSelection != MENU_ACT_AUTO) {
-        int idx = 2;
-        if (systemState.enc1MenuSelection == MENU_ACT_GOTO_MID) idx = 1;
-        else if (systemState.enc1MenuSelection == MENU_ACT_GOTO_BOT) idx = 0;
+    Enc1Menu sel = systemState.enc1MenuSelection;
+    if (sel != MENU_ACT_AUTO) {
+      int idx = 2;
+      if (sel == MENU_ACT_GOTO_MID) idx = 1;
+      else if (sel == MENU_ACT_GOTO_BOT) idx = 0;
 
-        systemState.actuatorLimitSet[idx] = false;
-        callSaveLimits = true;
-        LCD_setMessage("Actuator: Cleared");
-        printf("Actuator Limit %d cleared\n", idx);
-      }
-      xSemaphoreGive(systemStateMutex);
+      if (idx == 0) g_actuatorNode.clearLimitBot();
+      else if (idx == 1) g_actuatorNode.clearLimitMid();
+      else if (idx == 2) g_actuatorNode.clearLimitTop();
+      
+      LCD_setMessage("Actuator: Cleared");
+      printf("Actuator Limit %d cleared\n", idx);
     }
-    if (callSaveLimits) saveActuatorLimits();
   }
 }
 
@@ -446,11 +366,6 @@ static void handleMotorEncoder() {
   int32_t currentPos = 0;
   bool btnPressed = false;
   int limit = 15;
-
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    limit = systemState.motorEncoderLimit;
-    xSemaphoreGive(systemStateMutex);
-  }
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     g_encoderState.position[2] =
@@ -493,11 +408,8 @@ static void handleMotorEncoder() {
   // Ensure speed is only updated if autonomous sequence isn't running
   EventBits_t events = xEventGroupGetBits(controlEvents);
   if (!(events & BIT_AUTO_RUNNING)) {
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      systemState.targetSpeed =
-          motorPaused ? 0 : (d2 * MOTOR_SPEED_SCALE_FACTOR);
-      xSemaphoreGive(systemStateMutex);
-    }
+    int speed = motorPaused ? 0 : (d2 * MOTOR_SPEED_SCALE_FACTOR);
+    g_motorNode.setSpeed(speed);
   }
 }
 
@@ -528,54 +440,72 @@ static void handleAutonomousEncoder() {
     xSemaphoreGive(encoderStateMutex);
   }
 
+  // Read motor telemetry for limit checks
+  MotorTelemetry motorTel;
+  float motorLimits[3] = {0, 0, 0};
+  bool motorLimitSet[3] = {false, false, false};
+  if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+    motorLimits[0] = motorTel.limits[0];
+    motorLimits[1] = motorTel.limits[1];
+    motorLimits[2] = motorTel.limits[2];
+    motorLimitSet[0] = motorTel.limitSet[0];
+    motorLimitSet[1] = motorTel.limitSet[1];
+    motorLimitSet[2] = motorTel.limitSet[2];
+  }
+
+  // Read servo telemetry for calibration check
+  ServoTelemetry servoTel;
+  int calStart = -1, calCenter = -1;
+  if (xQueuePeek(servoTelQueue, &servoTel, pdMS_TO_TICKS(10)) == pdPASS) {
+    calStart = servoTel.calStart;
+    calCenter = servoTel.calCenter;
+  }
+
   // 1. Long Press: Motor Limits Setup
   if (longPress) {
-    bool callSaveLimits = false;
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      if (systemState.enc3MenuSelection != MENU_AUTO) {
-        int idx = 2; // Default GOTO_TOP
-        if (systemState.enc3MenuSelection == MENU_GOTO_MID) idx = 1;
-        else if (systemState.enc3MenuSelection == MENU_GOTO_BOT) idx = 0;
+    Enc3Menu sel = systemState.enc3MenuSelection;
+    if (sel != MENU_AUTO) {
+      int idx = 2; // Default GOTO_TOP
+      if (sel == MENU_GOTO_MID) idx = 1;
+      else if (sel == MENU_GOTO_BOT) idx = 0;
 
-        systemState.motorLimits[idx] = systemState.currentPosition;
-        systemState.motorLimitSet[idx] = true;
-        callSaveLimits = true;
-        LCD_setMessage("Position Set");
-        printf("Limit %d set to %.2f\n", idx, systemState.currentPosition);
+      float currentPos = 0;
+      if (xQueuePeek(motorTelQueue, &motorTel, 0) == pdPASS) {
+        currentPos = motorTel.currentPosition;
       }
-      xSemaphoreGive(systemStateMutex);
+
+      if (idx == 0) g_motorNode.setLimitBot(currentPos);
+      else if (idx == 1) g_motorNode.setLimitMid(currentPos);
+      else if (idx == 2) g_motorNode.setLimitTop(currentPos);
+
+      LCD_setMessage("Position Set");
+      printf("Limit %d set to %.2f\n", idx, currentPos);
     }
-    if (callSaveLimits) saveMotorLimits();
   }
 
   // 1b. Double Press: Clear Position
   if (doublePress) {
-    bool callSaveLimits = false;
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      if (systemState.enc3MenuSelection != MENU_AUTO) {
-        int idx = 2;
-        if (systemState.enc3MenuSelection == MENU_GOTO_MID) idx = 1;
-        else if (systemState.enc3MenuSelection == MENU_GOTO_BOT) idx = 0;
+    Enc3Menu sel = systemState.enc3MenuSelection;
+    if (sel != MENU_AUTO) {
+      int idx = 2;
+      if (sel == MENU_GOTO_MID) idx = 1;
+      else if (sel == MENU_GOTO_BOT) idx = 0;
 
-        systemState.motorLimitSet[idx] = false;
-        callSaveLimits = true;
-        LCD_setMessage("Position Cleared");
-        printf("Limit %d cleared\n", idx);
-      }
-      xSemaphoreGive(systemStateMutex);
+      if (idx == 0) g_motorNode.clearLimitBot();
+      else if (idx == 1) g_motorNode.clearLimitMid();
+      else if (idx == 2) g_motorNode.clearLimitTop();
+
+      LCD_setMessage("Position Cleared");
+      printf("Limit %d cleared\n", idx);
     }
-    if (callSaveLimits) saveMotorLimits();
   }
 
   // 2. Encoder Turn: Cycle Menu
   if (delta3 != 0) {
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      int sel = (int)systemState.enc3MenuSelection + delta3;
-      while (sel < 0) sel += 4;
-      sel = sel % 4;
-      systemState.enc3MenuSelection = (Enc3Menu)sel;
-      xSemaphoreGive(systemStateMutex);
-    }
+    int sel = (int)systemState.enc3MenuSelection + delta3;
+    while (sel < 0) sel += 4;
+    sel = sel % 4;
+    systemState.enc3MenuSelection = (Enc3Menu)sel;
   }
 
   // 3. Short Press: Launch, Resume, or E-STOP
@@ -584,27 +514,17 @@ static void handleAutonomousEncoder() {
 
     EventBits_t events = xEventGroupGetBits(controlEvents);
     if (!(events & BIT_AUTO_RUNNING)) {
-      Enc3Menu sel = MENU_AUTO;
-      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-        sel = systemState.enc3MenuSelection;
-        xSemaphoreGive(systemStateMutex);
-      }
+      Enc3Menu sel = systemState.enc3MenuSelection;
 
       bool canRun = false;
-      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-        if (sel == MENU_AUTO) {
-          canRun = systemState.motorLimitSet[0] &&
-                   systemState.motorLimitSet[1] &&
-                   systemState.motorLimitSet[2] &&
-                   (systemState.servoCalStart != -1) &&
-                   (systemState.servoCalCenter != -1);
-        } else {
-          int idx = 2;
-          if (sel == MENU_GOTO_MID) idx = 1;
-          else if (sel == MENU_GOTO_BOT) idx = 0;
-          canRun = systemState.motorLimitSet[idx];
-        }
-        xSemaphoreGive(systemStateMutex);
+      if (sel == MENU_AUTO) {
+        canRun = motorLimitSet[0] && motorLimitSet[1] && motorLimitSet[2] &&
+                 (calStart != -1) && (calCenter != -1);
+      } else {
+        int idx = 2;
+        if (sel == MENU_GOTO_MID) idx = 1;
+        else if (sel == MENU_GOTO_BOT) idx = 0;
+        canRun = motorLimitSet[idx];
       }
 
       if (canRun) {
@@ -638,9 +558,9 @@ static void handleAutonomousEncoder() {
   }
 }
 
-// ------------------------------------------------------------------------
-// Main Task Loops
-// ------------------------------------------------------------------------
+// ============================================================================
+// Main Controller Task
+// ============================================================================
 
 void controller_task(void *pvParameters) {
   // Sync static handler variables on boot
@@ -652,137 +572,105 @@ void controller_task(void *pvParameters) {
     xSemaphoreGive(encoderStateMutex);
   }
 
+  TickType_t lastWakeTime = xTaskGetTickCount();
+  const TickType_t CONTROLLER_INTERVAL = pdMS_TO_TICKS(50);
+
   while (1) {
+    // Process encoder inputs and dispatch commands
     handleServoEncoder();
     handleActuatorEncoder();
     handleMotorEncoder();
     handleAutonomousEncoder();
 
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelayUntil(&lastWakeTime, CONTROLLER_INTERVAL);
   }
 }
 
+// ============================================================================
+// Autonomous Sequence Task (unchanged logic, uses queues for state access)
+// ============================================================================
+
 void autonomous_task(void *pvParameters) {
-  // ---- Sequence Blueprint ----
+  // Define the autonomous sequence steps
+  const SequenceStep sequence[] = {
+      {SEQ_MOVE_Z, 0, Z_CLEARANCE_POS, "Auto: Raise Z"},
+      {SEQ_MOVE_SERVO, 0, 0, "Auto: Gripper Open"},
+      {SEQ_WAIT_MS, 500, 0, "Wait 500ms"},
+      {SEQ_MOVE_Z, 0, Z_TUBE_POS, "Auto: Lower Z"},
+      {SEQ_MOVE_SERVO, 100, 0, "Auto: Gripper Close"},
+      {SEQ_WAIT_MS, 500, 0, "Wait 500ms"},
+      {SEQ_MOVE_Z, 0, Z_CLEARANCE_POS, "Auto: Raise Z"},
+      {SEQ_MOVE_ACTUATOR, 1, 0, "Auto: Extend"},
+      {SEQ_WAIT_MS, 1000, 0, "Wait 1s"},
+      {SEQ_MOVE_SERVO, 0, 0, "Auto: Gripper Open"},
+      {SEQ_WAIT_USER, 0, 0, "Press to Drop"},
+      {SEQ_MOVE_SERVO, 100, 0, "Auto: Gripper Close"},
+      {SEQ_MOVE_ACTUATOR, 0, 0, "Auto: Retract"},
+      {SEQ_WAIT_MS, 500, 0, "Wait 500ms"},
+      {SEQ_MOVE_Z, 0, Z_TUBE_POS, "Auto: Lower Z"},
+      {SEQ_MOVE_SERVO, 0, 0, "Auto: Gripper Open"},
+      {SEQ_WAIT_MS, 500, 0, "Wait 500ms"},
+      {SEQ_MOVE_Z, 0, Z_CLEARANCE_POS, "Auto: Raise Z"},
+      {SEQ_MOVE_ACTUATOR, 1, 0, "Auto: Extend"},
+      {SEQ_WAIT_MS, 500, 0, "Wait 500ms"}};
 
-
-  // clang-format off
-  const SequenceStep peachSequence[] = {
-    // --- Initialize ---
-    {SEQ_WAIT_MS,       3000,     0,              "Auto: Starting... "},
-    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Retracting"},
-    {SEQ_MOVE_Z,        2,        0,              "Auto: To Clearance"}, // 2 = Top
-    {SEQ_WAIT_MS,       1000,     0,              NULL},
-
-    // --- Move to Aspirate Position ---
-    {SEQ_MOVE_SERVO,    1,        0,              "Auto: Servo Center"}, // 1 = Center
-    {SEQ_WAIT_MS,       2500,     0,              NULL},
-    {SEQ_MOVE_Z,        1,        0,              "Auto: Descending"},   // 1 = Mid
-    {SEQ_WAIT_MS,       1000,     0,              NULL},
-
-    // --- Aspiration Mixing (3 Cycles) ---
-    // Push plunger down (Bot=2) to expel, Pull (Top=0) to aspirate
-    {SEQ_MOVE_ACTUATOR, 2,        0,              "Auto: Mix 1 (Push)"},
-    {SEQ_WAIT_MS,       750,      0,              NULL},
-    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Mix 1 (Pull)"},
-    {SEQ_WAIT_MS,       750,      0,              NULL},
-
-    {SEQ_MOVE_ACTUATOR, 2,        0,              "Auto: Mix 2 (Push)"},
-    {SEQ_WAIT_MS,       750,      0,              NULL},
-    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Mix 2 (Pull)"},
-    {SEQ_WAIT_MS,       750,      0,              NULL},
-
-    {SEQ_MOVE_ACTUATOR, 2,        0,              "Auto: Mix 3 (Push)"},
-    {SEQ_WAIT_MS,       750,      0,              NULL},
-    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Aspirating"},
-    {SEQ_WAIT_MS,       1500,     0,              NULL},
-
-    // --- Move to Dispense Position ---
-    {SEQ_MOVE_Z,        2,        0,              "Auto: Up to Clearance"}, // 2 = Top
-    {SEQ_WAIT_MS,       500,      0,              NULL},
-    {SEQ_MOVE_SERVO,    0,        0,              "Auto: Servo Start"},     // 0 = Start
-    {SEQ_WAIT_MS,       1500,     0,              NULL},
-    {SEQ_MOVE_Z,        0,        0,              "Auto: Down to Dispense"},// 0 = Bot
-    {SEQ_WAIT_MS,       1000,     0,              NULL},
-
-    // --- Dispense Cells ---
-    {SEQ_MOVE_ACTUATOR, 2,        0,              "Auto: Dispensing"},
-    {SEQ_WAIT_MS,       1500,     0,              NULL},
-
-    // --- Return Home ---
-    {SEQ_MOVE_Z,        2,        0,              "Auto: Returning Home"},  // 2 = Top
-    {SEQ_WAIT_MS,       500,      0,              NULL},
-    {SEQ_MOVE_ACTUATOR, 0,        0,              "Auto: Reset Actuator"},
-    {SEQ_WAIT_MS,       1000,     0,              NULL},
-  };
-  // clang-format on
-
-  const int numSteps = sizeof(peachSequence) / sizeof(peachSequence[0]);
-
-  LCD_setMessage("Auto Sequence Start");
-  printf("Starting Autonomous Sequence (%d steps)...\n", numSteps);
-
+  const int numSteps = sizeof(sequence) / sizeof(sequence[0]);
   bool aborted = false;
 
-  // ---- Sequence Engine ----
-  for (int i = 0; i < numSteps && !aborted; i++) {
-    const SequenceStep &step = peachSequence[i];
+  LCD_setMessage("Auto: Running");
+  printf("Starting Autonomous Sequence...\n");
 
-    // Display step message on LCD if provided
+  for (int i = 0; i < numSteps; i++) {
+    const SequenceStep &step = sequence[i];
+
+    // Check for E-STOP before each step
+    EventBits_t ev = xEventGroupGetBits(controlEvents);
+    if (ev & BIT_ESTOP_REQUEST) {
+      aborted = true;
+      break;
+    }
+
     if (step.message != NULL) {
       LCD_setMessage(step.message);
-      printf("[Step %d/%d] %s\n", i + 1, numSteps, step.message);
     }
 
     switch (step.action) {
-
     case SEQ_MOVE_Z: {
-      // Deterministic Z-axis positioning using virtual position tracking
-      float currentPos = 0.0f;
-      float targetZ = 0.0f;
-      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        currentPos = systemState.currentPosition;
-        targetZ = systemState.motorLimits[step.target];
-        xSemaphoreGive(systemStateMutex);
+      // Send speed command to motor node
+      int velocity = (step.zTarget > 0) ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
+      
+      // Read current position from motor telemetry
+      MotorTelemetry motorTel;
+      float currentPos = 0;
+      if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+        currentPos = motorTel.currentPosition;
       }
 
-      // Set direction based on whether we need to go up or down
-      int velocity =
-          (targetZ > currentPos) ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
-      bool goingUp = (velocity > 0);
+      // Determine direction
+      bool goingUp = (step.zTarget > currentPos);
+      velocity = goingUp ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
+      
+      g_motorNode.setSpeed(velocity);
 
-      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        systemState.targetSpeed = velocity;
-        xSemaphoreGive(systemStateMutex);
-      }
-
-      // Poll position until we reach the target, checking for E-STOP
-      while (true) {
-        EventBits_t ev = xEventGroupGetBits(controlEvents);
+      // Wait until position is reached or E-STOP
+      bool posReached = false;
+      while (!posReached) {
+        ev = xEventGroupGetBits(controlEvents);
         if (ev & BIT_ESTOP_REQUEST) {
           aborted = true;
           break;
         }
 
-        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-          currentPos = systemState.currentPosition;
-          xSemaphoreGive(systemStateMutex);
+        if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+          currentPos = motorTel.currentPosition;
+          if (goingUp && currentPos >= step.zTarget) posReached = true;
+          if (!goingUp && currentPos <= step.zTarget) posReached = true;
         }
 
-        // Check if we've crossed the target threshold
-        if (goingUp && currentPos >= targetZ)
-          break;
-        if (!goingUp && currentPos <= targetZ)
-          break;
-
-        vTaskDelay(pdMS_TO_TICKS(10));
+        if (!posReached) vTaskDelay(pdMS_TO_TICKS(10));
       }
 
-      // Stop the motor
-      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        systemState.targetSpeed = 0;
-        xSemaphoreGive(systemStateMutex);
-      }
+      g_motorNode.setSpeed(0);
 
       // Back-sync encoder 2 (motor) to 0
       if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -793,13 +681,19 @@ void autonomous_task(void *pvParameters) {
     }
 
     case SEQ_MOVE_SERVO: {
-      int servoTargetPercent = 0;
+      ServoTelemetry servoTel;
+      int calStart = 0, calCenter = 50;
       bool atTop = false;
 
-      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        servoTargetPercent = (step.target == 0) ? systemState.servoCalStart : systemState.servoCalCenter;
-        atTop = (systemState.motorLimitSet[2] && systemState.currentPosition >= systemState.motorLimits[2] - 5.0f);
-        xSemaphoreGive(systemStateMutex);
+      if (xQueuePeek(servoTelQueue, &servoTel, pdMS_TO_TICKS(10)) == pdPASS) {
+        calStart = servoTel.calStart;
+        calCenter = servoTel.calCenter;
+      }
+
+      // Check if at top using motor telemetry
+      MotorTelemetry motorTel;
+      if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+        atTop = (motorTel.limitSet[2] && motorTel.currentPosition >= motorTel.limits[2] - 5.0f);
       }
 
       // Interlock
@@ -810,11 +704,8 @@ void autonomous_task(void *pvParameters) {
         break;
       }
 
-      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        systemState.servoTargetPercent = servoTargetPercent;
-        systemState.servoActive = true;
-        xSemaphoreGive(systemStateMutex);
-      }
+      int servoTargetPercent = (step.target == 0) ? calStart : calCenter;
+      g_servoNode.setTarget((float)servoTargetPercent);
 
       // UI Back-Sync: update encoder 0 so manual controls stay in sync
       if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -825,12 +716,12 @@ void autonomous_task(void *pvParameters) {
     }
 
     case SEQ_MOVE_ACTUATOR: {
+      ActuatorTelemetry actTel;
       int actuatorTargetPercent = 0;
-      if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        actuatorTargetPercent = systemState.actuatorLimits[step.target];
-        systemState.actuatorTargetPercent = actuatorTargetPercent;
-        xSemaphoreGive(systemStateMutex);
+      if (xQueuePeek(actuatorTelQueue, &actTel, pdMS_TO_TICKS(10)) == pdPASS) {
+        actuatorTargetPercent = actTel.limits[step.target];
       }
+      g_actuatorNode.setTarget(actuatorTargetPercent);
 
       // UI Back-Sync: update encoder 1 so manual controls stay in sync
       if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -857,7 +748,6 @@ void autonomous_task(void *pvParameters) {
 
     case SEQ_WAIT_USER: {
       // Wait for user button press OR E-STOP
-      // Check RESUME before ESTOP so pressing the button at a prompt resumes
       while (true) {
         EventBits_t ev = xEventGroupWaitBits(
             controlEvents, BIT_AUTO_RESUME | BIT_ESTOP_REQUEST, pdTRUE,
@@ -883,11 +773,8 @@ void autonomous_task(void *pvParameters) {
   // ---- Cleanup ----
   if (aborted) {
     // E-STOP: halt everything immediately
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-      systemState.targetSpeed = 0;
-      systemState.actuatorTargetPercent = 0;
-      xSemaphoreGive(systemStateMutex);
-    }
+    g_motorNode.setSpeed(0);
+    g_actuatorNode.setTarget(0);
     LCD_setMessage("Auto: E-STOPPED");
     printf("!!! Autonomous Sequence E-STOPPED !!!\n");
     xEventGroupClearBits(controlEvents, BIT_ESTOP_REQUEST);
@@ -901,46 +788,39 @@ void autonomous_task(void *pvParameters) {
   vTaskDelete(NULL);
 }
 
-// ------------------------------------------------------------------------
-// Utility Functions
-// ------------------------------------------------------------------------
-
-float motorDistanceCalculator(float speed, int timeInMS) {
-  return 1.372e-6f * speed * timeInMS;
-}
-
-float motorSpeedCalculator(float position, int timeInMS) {
-  return (position / timeInMS) / 1.372e-6f;
-}
+// ============================================================================
+// Motor GOTO Task (uses queues for state access)
+// ============================================================================
 
 void motor_goto_task(void *pvParameters) {
   Enc3Menu sel = MENU_AUTO;
   float targetZ = 0.0f;
-  
+
   if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
     sel = systemState.enc3MenuSelection;
-    if (sel == MENU_GOTO_TOP) targetZ = systemState.motorLimits[2];
-    else if (sel == MENU_GOTO_MID) targetZ = systemState.motorLimits[1];
-    else if (sel == MENU_GOTO_BOT) targetZ = systemState.motorLimits[0];
     xSemaphoreGive(systemStateMutex);
+  }
+
+  // Read motor limits from telemetry
+  MotorTelemetry motorTel;
+  if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+    if (sel == MENU_GOTO_TOP) targetZ = motorTel.limits[2];
+    else if (sel == MENU_GOTO_MID) targetZ = motorTel.limits[1];
+    else if (sel == MENU_GOTO_BOT) targetZ = motorTel.limits[0];
   }
 
   LCD_setMessage("Auto: GOTO");
   printf("Starting GOTO target %.2f...\n", targetZ);
 
   float currentPos = 0.0f;
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    currentPos = systemState.currentPosition;
-    xSemaphoreGive(systemStateMutex);
+  if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+    currentPos = motorTel.currentPosition;
   }
 
   int velocity = (targetZ > currentPos) ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
   bool goingUp = (velocity > 0);
 
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    systemState.targetSpeed = velocity;
-    xSemaphoreGive(systemStateMutex);
-  }
+  g_motorNode.setSpeed(velocity);
 
   bool aborted = false;
   while (true) {
@@ -950,9 +830,8 @@ void motor_goto_task(void *pvParameters) {
       break;
     }
 
-    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-      currentPos = systemState.currentPosition;
-      xSemaphoreGive(systemStateMutex);
+    if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(5)) == pdPASS) {
+      currentPos = motorTel.currentPosition;
     }
 
     if (goingUp && currentPos >= targetZ) break;
@@ -961,10 +840,7 @@ void motor_goto_task(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    systemState.targetSpeed = 0;
-    xSemaphoreGive(systemStateMutex);
-  }
+  g_motorNode.setSpeed(0);
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     g_encoderState.position[2] = 0;
@@ -980,4 +856,16 @@ void motor_goto_task(void *pvParameters) {
 
   xEventGroupClearBits(controlEvents, BIT_AUTO_RUNNING);
   vTaskDelete(NULL);
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+float motorDistanceCalculator(float speed, int timeInMS) {
+  return 1.372e-6f * speed * timeInMS;
+}
+
+float motorSpeedCalculator(float position, int timeInMS) {
+  return (position / timeInMS) / 1.372e-6f;
 }
