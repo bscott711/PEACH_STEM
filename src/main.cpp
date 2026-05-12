@@ -28,16 +28,18 @@ void setup() {
   static int lcd_interval = TASK_REFRESH_LCD;
 
   // Create Tasks
-  xTaskCreate(motor_task, "Update Motor", 4096, &task_update_motor, 1, NULL);
-  xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 2, NULL);
-  xTaskCreate(controller_task, "Controller", 4096, NULL, 2, NULL);
-  xTaskCreate(servo_task, "Servo", 8192, &servo_interval, 2, NULL);
+  // Priorities Rebalanced: Higher number = Higher Priority
+  xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 3, NULL);
+  xTaskCreate(controller_task, "Controller", 4096, NULL, 3, NULL);
+
+  xTaskCreate(motor_task, "Update Motor", 4096, &task_update_motor, 2, NULL);
   xTaskCreate(actuator_task, "Actuator", 4096, NULL, 2, NULL);
+  xTaskCreate(servo_task, "Servo", 4096, &servo_interval, 2, NULL);
+
   xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 2, NULL);
 }
 
 void loop() {
-  // Main loop never used
-  // Delay prevents watchdog trigger
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  // Delete the default Arduino loop task to reclaim its memory stack
+  vTaskDelete(NULL);
 }

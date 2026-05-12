@@ -1,103 +1,216 @@
-# PEACH_PIT
+# PEACH PIT - Robotic Cell Dropper
 
-## Getting started
+An ESP32-based embedded control system for automated laboratory cell handling with precision motion control.
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Overview
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+PEACH_PIT is a multi-axis robotic control system designed for pick-and-drop operations in laboratory environments. Built on the ESP32 platform with FreeRTOS, it provides deterministic real-time control of stepper motors, servos, and linear actuators.
 
-## Add your files
+**Current Branch Status**: Refactored autonomous sequence engine with dynamic, interruptible step-based execution supporting E-STOP and UI state synchronization.
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## Features
 
-```bash
-cd existing_repo
-git remote add origin https://gitlab.com/ericjohnson0987/robotic-cell-dropper.git
-git branch -M main
-git push -uf origin main
-```
+- **Multi-task FreeRTOS Architecture**: Concurrent task management for motor control, encoder reading, LCD display, servo positioning, and actuator control
+- **Dynamic Sequence Engine**: Interruptible step-based autonomous operation with E-STOP support
+- **Precision Motion Control**:
+  - Stepper motor with TMC2209 driver and StallGuard stall detection
+  - Servo motor with NVS-persisted calibration
+  - Linear actuator with position tracking
+- **Real-time Feedback**: Quadrature encoder integration for closed-loop position control
+- **User Interface**: OLED LCD display (U8g2) for status monitoring and menu navigation
+- **Safety Features**:
+  - Emergency stop (E-STOP) with immediate sequence interruption
+  - Collision detection with timestamp logging
+  - Homing routine with limit detection
+- **State Persistence**: Non-volatile storage (NVS) for system state and servo calibration
+- **StallGuard Live Tuning**: Real-time threshold adjustment for optimal motor performance
 
-## Integrate with your tools
+## Hardware Requirements
 
-* [Set up project integrations](https://gitlab.com/ericjohnson0987/robotic-cell-dropper/-/settings/integrations)
-
-## Collaborate with your team
-
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
-
-***
-
-## Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-
-Choose a self-explaining name for your project.
-
-## Description
-
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+- **Microcontroller**: ESP32 DevKit
+- **Motor Drivers**: 
+  - TMC2209 stepper motor driver
+  - Servo driver (Adafruit Seesaw compatible)
+- **Display**: I2C OLED LCD
+- **Encoder**: Quadrature rotary encoder (I2C)
+- **Actuators**: Linear actuator with position feedback
 
 ## Installation
 
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### Prerequisites
+
+- [PlatformIO](https://platformio.org/install) or VS Code with PlatformIO extension
+- Python 3.x
+
+### Setup
+
+1. Clone the repository:
+```bash
+git clone https://gitlab.com/ericjohnson0987/robotic-cell-dropper.git
+cd robotic-cell-dropper
+```
+
+2. Install PlatformIO dependencies:
+```bash
+pio install
+```
+
+3. Configure upload port in `platformio.ini` if necessary
+
+4. Build and upload:
+```bash
+pio run --target upload
+```
+
+5. Open serial monitor:
+```bash
+pio device monitor
+```
+
+## Project Structure
+
+```
+PEACH_PIT/
+├── src/
+│   ├── main.cpp              # Entry point and task initialization
+│   ├── controller.h          # System state, configuration, and sequence definitions
+│   ├── drivers/              # Hardware abstraction layer
+│   │   ├── EncoderDriver.*   # Quadrature encoder interface
+│   │   ├── HBridgeDriver.*   # Motor bridge control
+│   │   ├── LCDDriver.*       # OLED display driver
+│   │   ├── MotorDriver.*     # Stepper motor control (TMC2209)
+│   │   └── ServoDriver.*     # Servo motor control
+│   └── tasks/                # FreeRTOS task implementations
+│       ├── encoder_task.*    # Encoder reading task
+│       ├── motor_task.*      # Motor control task
+│       ├── LCD_task.*        # Display refresh task
+│       ├── servo_task.*      # Servo positioning task
+│       └── actuator_task.*   # Linear actuator control
+├── include/                  # Public headers
+├── lib/                      # External libraries
+├── test/                     # Unit tests
+├── CMakeLists.txt           # CMake build configuration
+├── platformio.ini           # PlatformIO project configuration
+└── README.md                # This file
+```
 
 ## Usage
 
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### System Modes
 
-## Support
+The controller operates in three primary modes:
 
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+1. **IDLE**: System initialized, awaiting commands
+2. **PICKUP_CELL**: Automated sequence for picking up sample cells
+3. **DROPOFF_CELL**: Automated sequence for depositing sample cells
 
-## Roadmap
+### Sequence Engine
 
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+The autonomous sequence engine uses a step-based approach defined in `controller.h`:
+
+```cpp
+enum SequenceAction {
+  SEQ_MOVE_Z,        // Move Z-axis to target position
+  SEQ_MOVE_SERVO,    // Set servo to target percent
+  SEQ_MOVE_ACTUATOR, // Set actuator to target percent
+  SEQ_WAIT_MS,       // Interruptible delay
+  SEQ_WAIT_USER      // Wait for user button press
+};
+```
+
+Each sequence step can be interrupted by E-STOP events, ensuring safe operation.
+
+### Manual Controls
+
+- **Servo Adjustment Mode**: Fine-tune servo position manually
+- **Servo Calibration**: Two-point calibration (start/center) persisted to NVS
+- **StallGuard Tuning**: Live threshold adjustment for stall detection sensitivity
+
+## Configuration
+
+Key configuration parameters in `controller.h`:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `MOTOR_SPEED_SCALE_FACTOR` | 333 | Speed scaling for motor calculations |
+| `AUTO_SEQUENCE_SPEED` | 120000 | Default speed for autonomous sequences |
+| `AUTO_SEQUENCE_DURATION_MS` | 15000 | Duration for auto sequence moves |
+| `SERVO_MIN/MAX_PERCENT` | 0/100 | Servo range limits |
+| `ACTUATOR_STEP_PERCENT` | 10 | Actuator movement increment |
+
+## Task Priorities
+
+FreeRTOS task priorities (higher number = higher priority):
+
+- **EncoderTask** (3): Critical for position feedback
+- **Controller** (3): Main control logic
+- **Update Motor** (2): Motor speed/direction updates
+- **Actuator** (2): Linear actuator positioning
+- **Servo** (2): Servo angle control
+- **LCD** (2): Display refresh
+
+## Safety Considerations
+
+⚠️ **E-STOP**: The system supports emergency stop via event flags. When triggered:
+- All autonomous sequences halt immediately
+- Motor motion is suspended
+- System awaits manual reset
+
+⚠️ **Collision Detection**: The system monitors for unexpected resistance and logs collision events with timestamps.
+
+## Development
+
+### Building
+
+```bash
+pio run
+```
+
+### Uploading
+
+```bash
+pio run --target upload
+```
+
+### Serial Monitor
+
+```bash
+pio device monitor
+```
+
+### Debugging
+
+Enable USB serial output at 115200 baud for debugging information.
 
 ## Contributing
 
-State if you are open to contributions and what your requirements are for accepting them.
+Contributions are welcome! Please follow these guidelines:
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Merge Request
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+## Authors and Acknowledgment
 
-## Authors and acknowledgment
-
-Show your appreciation to those who have contributed to the project.
+- Eric Johnson and the Robotic Cell Development Team
 
 ## License
 
-For open source projects, say how it is licensed.
+This project is proprietary software developed for laboratory automation.
 
-## Project status
+## Project Status
 
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+**Active Development** - Current focus on refining the autonomous sequence engine and improving E-STOP response times.
+
+### Recent Changes
+
+- Replaced hardcoded autonomous sequences with dynamic step-based engine
+- Added interruptible sequence execution with E-STOP support
+- Implemented UI state synchronization across all tasks
+- Enhanced collision detection and logging
+
+---
+
+*Last updated: Based on commit "refactor: replace hardcoded autonomous sequence with a dynamic, interruptible step-based engine supporting E-STOP and UI state synchronization."*
