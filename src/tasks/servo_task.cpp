@@ -2,9 +2,9 @@
 #include "drivers/ServoDriver.h"
 #include <esp_log.h>
 
-// Speed divisor: 1 = full speed, 2 = half speed, 4 = quarter speed, etc.
+// Speed divisor: 1.0 = full speed, 2.0 = half speed, 4.0 = quarter speed, etc.
 // Higher value = slower, smoother movement
-#define SERVO_SPEED_DIVISOR 1
+#define SERVO_SPEED_DIVISOR 1.0f
 
 void servo_task(void *pvParameters) {
   ServoDriver_Init();
@@ -13,50 +13,49 @@ void servo_task(void *pvParameters) {
   int interval = *(int *)pvParameters;
   TickType_t lastWakeTime = xTaskGetTickCount();
 
-  // Track the current physical position in 10x fixed-point (0 = 0.0%, 1000 =
-  // 100.0%)
-  int current_x10 = 0;
+  // Track the current physical position in high-resolution float
+  float current_pos = 0.0f;
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
-    current_x10 = systemState.servoPercent * 10;
+    current_pos = (float)systemState.servoPercent;
     xSemaphoreGive(systemStateMutex);
   }
 
-  // Step size in 10x units: 10 = 1% per tick, 5 = 0.5% per tick, etc.
-  const int step = 10 / SERVO_SPEED_DIVISOR;
+  // Step size per tick
+  const float step = 1.0f / SERVO_SPEED_DIVISOR;
 
   while (1) {
-    int target_x10 = current_x10;
-
+    float target_pos = current_pos;
     bool isActive = false;
 
     // 1. Safely read the target from the global state
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-      target_x10 = systemState.servoTargetPercent * 10;
+      target_pos = (float)systemState.servoTargetPercent;
       isActive = systemState.servoActive;
       xSemaphoreGive(systemStateMutex);
     } else {
       ESP_LOGW("SERVO", "Mutex timeout reading target");
     }
 
-    // 2. Smooth ramp: move toward target in sub-percent steps
-    if (current_x10 < target_x10) {
-      current_x10 = min(current_x10 + step, target_x10);
-    } else if (current_x10 > target_x10) {
-      current_x10 = max(current_x10 - step, target_x10);
+    // 2. Smooth ramp: move toward target in high-resolution sub-percent steps
+    if (current_pos < target_pos) {
+      current_pos += step;
+      if (current_pos > target_pos) current_pos = target_pos;
+    } else if (current_pos > target_pos) {
+      current_pos -= step;
+      if (current_pos < target_pos) current_pos = target_pos;
     }
 
-    // 3. Command the hardware (convert back from 10x to percent)
-    int percent = current_x10 / 10;
-    
+    // 3. Command the hardware with the high-resolution float
     if (isActive) {
-      ServoDriver_WritePercent(percent);
+      ServoDriver_WritePercent(current_pos);
     } else {
       ServoDriver_Disable(); // Leave servo limp
     }
 
     // 4. Update the global state with our actual physical position
+    // (Cast back to int to maintain compatibility with the UI's SystemState struct)
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-      systemState.servoPercent = percent;
+      systemState.servoPercent = (int)current_pos;
       xSemaphoreGive(systemStateMutex);
     } else {
       ESP_LOGW("SERVO", "Mutex timeout writing current percent");

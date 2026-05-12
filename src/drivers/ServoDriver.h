@@ -13,4 +13,4 @@
 // ---- API ----
 void ServoDriver_Init();
 void ServoDriver_Disable();
-void ServoDriver_WritePercent(int pct);
+void ServoDriver_WritePercent(float pct);
