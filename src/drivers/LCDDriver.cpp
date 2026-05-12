@@ -1,4 +1,5 @@
 #include "drivers/LCDDriver.h"
+#include "messaging.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
@@ -10,9 +11,10 @@
  * Mutex Lock Order Protocol (ALWAYS acquire in this order to prevent deadlock):
  * 1. lcdMutex          (LCD driver internal state message buffer)
  * 2. encoderStateMutex (g_encoderState - encoder input)
- * 3. systemStateMutex  (SystemState - main control state)
+ * 3. systemStateMutex  (SystemState - UI-specific states ONLY: mode, enc selections)
  * * Rule: Never hold a "lower" mutex while waiting for a "higher" one.
  * Rule: Keep critical sections short; copy data to local vars before releasing.
+ * Note: Motion subsystem state is read lock-free via telemetry queues.
  */
 
 // Instantiation for our LCD screen
@@ -202,21 +204,35 @@ static void draw_encoderStatus() {
   static Enc3Menu enc3MenuSelection = MENU_AUTO;
   static Enc1Menu enc1MenuSelection = MENU_ACT_AUTO;
 
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-    servoTarget = systemState.servoTargetPercent;
-    servoActual = systemState.servoPercent;
-    actuatorTarget = systemState.actuatorTargetPercent;
-    actuatorActual = systemState.actuatorPercent;
-    motorTarget = systemState.targetSpeed;
-    currentMode = systemState.mode;
-    servoCalStep = systemState.servoCalStep;
-    servoCalStart = systemState.servoCalStart;
-    servoCalCenter = systemState.servoCalCenter;
+  // 1. Read motion subsystem state via lock-free telemetry queues
+  ServoTelemetry srvTel;
+  ActuatorTelemetry actTel;
+  MotorTelemetry motTel;
+  
+  if (xQueuePeek(servoTelQueue, &srvTel, 0) == pdPASS) {
+    servoTarget = (int)srvTel.targetPercent;
+    servoActual = (int)srvTel.currentPercent;
+    servoCalStart = srvTel.calStart;
+    servoCalCenter = srvTel.calCenter;
+  }
+  
+  if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
+    actuatorTarget = actTel.targetPercent;
+    actuatorActual = (int)actTel.currentPercent;
+  }
+  
+  if (xQueuePeek(motorTelQueue, &motTel, 0) == pdPASS) {
+    motorTarget = motTel.targetSpeed;
+    currentPos = motTel.currentPosition;
     for (int i = 0; i < 3; i++) {
-      motorLimits[i] = systemState.motorLimits[i];
-      motorLimitSet[i] = systemState.motorLimitSet[i];
+      motorLimits[i] = motTel.limits[i];
+      motorLimitSet[i] = motTel.limitSet[i];
     }
-    currentPos = systemState.currentPosition;
+  }
+
+  // 2. Read UI-specific state via systemStateMutex (mode, menu selections)
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+    currentMode = systemState.mode;
     enc3MenuSelection = systemState.enc3MenuSelection;
     enc1MenuSelection = systemState.enc1MenuSelection;
     xSemaphoreGive(systemStateMutex);
