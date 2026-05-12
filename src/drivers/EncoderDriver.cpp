@@ -4,6 +4,8 @@
 #include <esp_log.h>
 #include <Preferences.h>
 
+extern Preferences preferences;
+
 static Adafruit_seesaw ss(&Wire);
 
 EncoderState g_encoderState;
@@ -45,10 +47,7 @@ void init_encoder() {
   }
 
   // Override encoder 0 to match saved servo start position
-  Preferences prefs;
-  prefs.begin("peach", true);
-  int savedStart = prefs.getInt("srvStart", -1);
-  prefs.end();
+  int savedStart = preferences.getInt("srvStart", -1);
 
   if (savedStart != -1) {
     if (xSemaphoreTake(encoderStateMutex, portMAX_DELAY) == pdTRUE) {
