@@ -6,6 +6,7 @@ static const char* TAG = "SERVO_NODE";
 
 ServoNode::ServoNode()
     : currentPercent(0.0f)
+    , currentVelocity(0.0f)
     , targetPercent(50.0f)  // Default to center
     , isActive(false)
     , calStart(-1)
@@ -73,17 +74,45 @@ void ServoNode::processCommand(const ServoCommand& cmd) {
 }
 
 void ServoNode::hwUpdate() {
-    // Smooth ramp toward target using high-resolution float math
-    if (currentPercent < targetPercent) {
-        currentPercent += STEP_SIZE;
-        if (currentPercent > targetPercent) {
-            currentPercent = targetPercent;
+    // Calculate distance and direction to target
+    float error = targetPercent - currentPercent;
+    float distance = abs(error);
+
+    if (distance > 0.01f || abs(currentVelocity) > 0.01f) {
+        // Calculate ideal velocity to stop exactly at target: v = sqrt(2 * a * d)
+        float idealVelocity = sqrt(2.0f * ACCELERATION * distance);
+
+        // Clamp to maximum allowed cruise velocity
+        if (idealVelocity > MAX_VELOCITY) {
+            idealVelocity = MAX_VELOCITY;
         }
-    } else if (currentPercent > targetPercent) {
-        currentPercent -= STEP_SIZE;
-        if (currentPercent < targetPercent) {
-            currentPercent = targetPercent;
+
+        // Apply directional sign
+        if (error < 0) {
+            idealVelocity = -idealVelocity;
         }
+
+        // Apply Acceleration limit (Ease-in and Ease-out)
+        if (currentVelocity < idealVelocity) {
+            currentVelocity += ACCELERATION;
+            if (currentVelocity > idealVelocity) currentVelocity = idealVelocity;
+        } else if (currentVelocity > idealVelocity) {
+            currentVelocity -= ACCELERATION;
+            if (currentVelocity < idealVelocity) currentVelocity = idealVelocity;
+        }
+
+        // Apply velocity to position
+        currentPercent += currentVelocity;
+
+        // Prevent micro-overshoots from floating point rounding
+        if ((error > 0 && currentPercent > targetPercent) || 
+            (error < 0 && currentPercent < targetPercent)) {
+            currentPercent = targetPercent;
+            currentVelocity = 0.0f;
+        }
+    } else {
+        currentPercent = targetPercent;
+        currentVelocity = 0.0f;
     }
     
     // Command hardware with exact float position

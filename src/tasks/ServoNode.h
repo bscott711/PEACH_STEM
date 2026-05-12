@@ -13,6 +13,7 @@ class ServoNode : public ActiveMotionNode<ServoCommand, ServoTelemetry> {
 private:
     // High-resolution position tracking (float percent)
     float currentPercent;
+    float currentVelocity;
     float targetPercent;
     bool isActive;
     
@@ -24,7 +25,8 @@ private:
     Preferences preferences;
     
     // Motion ramping
-    static constexpr float STEP_SIZE = 1.0f;  // Percent per tick
+    static constexpr float MAX_VELOCITY = 1.5f; // Max 1.5% per 10ms tick (150%/sec)
+    static constexpr float ACCELERATION = 0.05f; // Max velocity change per tick (Ease-in rate)
     
 public:
     ServoNode();
