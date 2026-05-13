@@ -15,6 +15,7 @@ private:
     float currentPercent;
     float currentVelocity;
     float targetPercent;
+    float lastSavedPercent;
     bool isActive;
     
     // Calibration data (NVS persisted)

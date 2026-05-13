@@ -7,6 +7,7 @@ static const char* TAG = "ACTUATOR_NODE";
 ActuatorNode::ActuatorNode()
     : currentPercent(0.0f)
     , targetPercent(0)
+    , lastSavedPercent(-1.0f)
     , currentSpeedMode(ActSpeed::FAST) {
     limits[0] = 0; limits[1] = 0; limits[2] = 0;
     limitSet[0] = false; limitSet[1] = false; limitSet[2] = false;
@@ -20,16 +21,17 @@ void ActuatorNode::hwInit() {
     // Initialize H-bridge hardware
     HBridge_Init();
     
-    // Home (retract) actuator on boot
-    // Safe to block here since RTOS scheduler is just starting
-    HBridge_Set(ACT_REVERSE);
-    vTaskDelay(pdMS_TO_TICKS(FULL_EXTEND_TIME_MS));
-    HBridge_Set(ACT_STOP);
-    
-    // Open NVS namespace for limit storage
+    // Open NVS namespace for limit and position storage
     if (!preferences.begin("peach", false)) {
         ESP_LOGE(TAG, "Failed to open NVS namespace");
     } else {
+        // Load last known position
+        float lastPos = preferences.getFloat("actPos", 0.0f);
+        currentPercent = lastPos;
+        targetPercent = (int)lastPos;
+        lastSavedPercent = lastPos;
+        ESP_LOGI(TAG, "Resuming actuator at last position: %.2f%%", lastPos);
+
         // Load limit data from NVS
         limits[0] = preferences.getInt("actB", 0);
         limits[1] = preferences.getInt("actM", 0);
@@ -112,6 +114,16 @@ void ActuatorNode::hwUpdate() {
         HBridge_Set(ACT_REVERSE, pwmVal);
     } else {
         HBridge_Set(ACT_STOP);
+        
+        // Save position to NVS if it has changed since last save
+        if (abs(currentPercent - lastSavedPercent) > 0.1f) {
+            if (preferences.begin("peach", false)) {
+                preferences.putFloat("actPos", currentPercent);
+                preferences.end();
+                lastSavedPercent = currentPercent;
+                ESP_LOGI(TAG, "Saved actuator position: %.2f%%", currentPercent);
+            }
+        }
     }
 }
 

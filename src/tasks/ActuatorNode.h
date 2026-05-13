@@ -14,6 +14,7 @@ private:
     // High-resolution position tracking (float percent for smooth ramping)
     float currentPercent;
     int targetPercent;
+    float lastSavedPercent;
     ActSpeed currentSpeedMode;
     
     // Limit positions (NVS persisted)

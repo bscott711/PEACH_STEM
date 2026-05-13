@@ -8,6 +8,7 @@ ServoNode::ServoNode()
     : currentPercent(0.0f)
     , currentVelocity(0.0f)
     , targetPercent(50.0f)  // Default to center
+    , lastSavedPercent(-1.0f)
     , isActive(false)
     , calStart(-1)
     , calCenter(-1) {
@@ -21,7 +22,7 @@ void ServoNode::hwInit() {
     // Initialize PWM hardware for servo
     ServoDriver_Init();
     
-    // Open NVS namespace for calibration storage
+    // Open NVS namespace for calibration and position storage
     if (!preferences.begin("peach", false)) {
         ESP_LOGE(TAG, "Failed to open NVS namespace");
     } else {
@@ -29,12 +30,21 @@ void ServoNode::hwInit() {
         calStart = preferences.getInt("srvStart", -1);
         calCenter = preferences.getInt("srvCenter", -1);
         
+        // Load last known position
+        float lastPos = preferences.getFloat("srvPos", -1.0f);
+        
         ESP_LOGI(TAG, "Loaded calibration: start=%d, center=%d", calStart, calCenter);
         
-        // Initialize position to calibrated center if available
-        if (calCenter != -1) {
+        if (lastPos >= 0.0f) {
+            currentPercent = lastPos;
+            targetPercent = lastPos;
+            lastSavedPercent = lastPos;
+            ESP_LOGI(TAG, "Resuming servo at last position: %.2f%%", lastPos);
+        } else if (calCenter != -1) {
             currentPercent = (float)calCenter;
             targetPercent = (float)calCenter;
+            lastSavedPercent = (float)calCenter;
+            ESP_LOGI(TAG, "Initializing servo to calibrated center: %d%%", calCenter);
         }
     }
 }
@@ -113,6 +123,16 @@ void ServoNode::hwUpdate() {
     } else {
         currentPercent = targetPercent;
         currentVelocity = 0.0f;
+
+        // Save position to NVS if it has changed since last save
+        if (abs(currentPercent - lastSavedPercent) > 0.1f) {
+            if (preferences.begin("peach", false)) {
+                preferences.putFloat("srvPos", currentPercent);
+                preferences.end();
+                lastSavedPercent = currentPercent;
+                ESP_LOGI(TAG, "Saved servo position: %.2f%%", currentPercent);
+            }
+        }
     }
     
     // Command hardware with exact float position
