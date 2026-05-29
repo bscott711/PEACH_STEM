@@ -4,33 +4,31 @@
 #include <freertos/queue.h>
 
 // ============================================================================
-// SERVO MESSAGING
+// ARM MESSAGING
 // ============================================================================
 
-enum class ServoCmdAction {
-    SET_TARGET,      // Set target position (float percent)
-    ACTIVATE,        // Enable servo output
-    DEACTIVATE,      // Disable servo output (limp)
+enum class ArmCmdAction {
+    SET_TARGET,      // Set target position (absolute steps)
+    SET_SPEED,       // Jog velocity
     SET_CAL_START,   // Save current position as calibration start
     SET_CAL_CENTER,  // Save current position as calibration center
-    GET_CAL_DATA     // Request calibration data (for telemetry response)
+    GET_CAL_DATA     // Request calibration data
 };
 
-struct ServoCommand {
-    ServoCmdAction action;
-    float value;     // Target percent or calibration value
+struct ArmCommand {
+    ArmCmdAction action;
+    float value;     // Target steps or speed
 };
 
-struct ServoTelemetry {
-    float currentPercent;    // Actual physical position
-    float targetPercent;     // Current target
-    bool isActive;           // Whether servo is enabled
-    int calStart;            // Calibration start (-1 if not set)
-    int calCenter;           // Calibration center (-1 if not set)
+struct ArmTelemetry {
+    float currentPosition;   // Actual physical step position
+    float targetPosition;    // Current target
+    int calStart;            // Calibration start steps (-1 if not set)
+    int calCenter;           // Calibration center steps (-1 if not set)
 };
 
-extern QueueHandle_t servoCmdQueue;
-extern QueueHandle_t servoTelQueue;
+extern QueueHandle_t armCmdQueue;
+extern QueueHandle_t armTelQueue;
 
 // ============================================================================
 // ACTUATOR MESSAGING
@@ -79,7 +77,6 @@ enum class MotorCmdAction {
     CLEAR_LIMIT_MID, // Clear middle limit
     CLEAR_LIMIT_TOP, // Clear top limit
     START_HOMING,    // Initiate homing sequence
-    SET_SG_THRESHOLD,// Set StallGuard threshold
     GET_STATE        // Request state (for telemetry response)
 };
 
@@ -95,8 +92,8 @@ struct MotorTelemetry {
     bool isHoming;         // Currently homing flag
     float limits[3];       // [0]=Bot, [1]=Mid, [2]=Top
     bool limitSet[3];      // Whether each limit is configured
-    int sgThreshold;       // Current StallGuard threshold
-    bool collisionDetected;// Collision flag
+    bool topEndstopTriggered;
+    bool botEndstopTriggered;
 };
 
 extern QueueHandle_t motorCmdQueue;

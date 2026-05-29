@@ -22,11 +22,11 @@ private:
     // Homing and collision state
     bool isHomed;
     bool isHoming;
-    bool collisionDetected;
     bool motorLocked;
     
-    // StallGuard threshold
-    int sgThreshold;
+    // Optical endstop states
+    bool topEndstopTriggered;
+    bool botEndstopTriggered;
     
     // Limit positions (NVS persisted)
     float limits[3];     // [0]=Bot, [1]=Mid, [2]=Top
@@ -36,13 +36,13 @@ private:
     Preferences preferences;
     
     // Homing state machine
-    enum HomingState { H_IDLE, H_MOVING, H_BLIND_WAIT, H_POLLING };
+    enum HomingState { H_IDLE, H_MOVING_TOP, H_BACKOFF, H_MOVING_BOT };
     HomingState homingState;
     TickType_t homingStartTime;
     
-    // Servo interlock data (read from telemetry)
-    int servoPercent;
-    int servoCalStart;
+    // Arm interlock data (read from telemetry)
+    int armPercent;
+    int armCalStart;
     
 public:
     MotorNode();
@@ -63,10 +63,8 @@ public:
     bool clearLimitBot();
     bool clearLimitMid();
     bool clearLimitTop();
-    bool setSGThreshold(int threshold);
     
     // Getters for state
     float getPosition() const { return currentPosition; }
     bool getIsHomed() const { return isHomed; }
-    int getSGThreshold() const { return sgThreshold; }
 };

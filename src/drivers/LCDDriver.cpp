@@ -262,11 +262,11 @@ static void draw_encoderStatus() {
   char statusBuffer[32];
 
   // Static caches so the UI doesn't zero out if the mutex times out
-  static int servoTarget = 0, servoActual = 0, actuatorTarget = 0,
+  static int armTarget = 0, armActual = 0, actuatorTarget = 0,
              actuatorActual = 0, motorTarget = 0;
-  static int servoCalStart = 0, servoCalCenter = 50;
+  static int armCalStart = 0, armCalCenter = 100;
   static DeviceMode currentMode = IDLE;
-  static ServoCalibrationStep servoCalStep = CAL_OFF;
+  static enum ArmCalibrationStep { CAL_OFF, CAL_SET_START, CAL_SET_CENTER } armCalStep = CAL_OFF;
   static float motorLimits[3] = {0.0f, 0.0f, 0.0f};
   static bool motorLimitSet[3] = {false, false, false};
   static float currentPos = 0.0f;
@@ -274,15 +274,15 @@ static void draw_encoderStatus() {
   static Enc1Menu enc1MenuSelection = MENU_ACT_MAN_FAST;
 
   // 1. Read motion subsystem state via lock-free telemetry queues
-  ServoTelemetry srvTel;
+  ArmTelemetry armTel;
   ActuatorTelemetry actTel;
   MotorTelemetry motTel;
   
-  if (xQueuePeek(servoTelQueue, &srvTel, 0) == pdPASS) {
-    servoTarget = (int)srvTel.targetPercent;
-    servoActual = (int)srvTel.currentPercent;
-    servoCalStart = srvTel.calStart;
-    servoCalCenter = srvTel.calCenter;
+  if (xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
+    armTarget = (int)armTel.targetPosition;
+    armActual = (int)armTel.currentPosition;
+    armCalStart = armTel.calStart;
+    armCalCenter = armTel.calCenter;
   }
   
   if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
@@ -309,38 +309,29 @@ static void draw_encoderStatus() {
     ESP_LOGW("LCD", "systemStateMutex timeout; showing cached values");
   }
 
-  // Encoder 0: Servo — Row at y=11, text baseline y=17
-  if (servoCalStep == CAL_SET_START) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S0:CAL START:%03d%%",
-             servoTarget);
-    u8g2.drawStr(0, 17, statusBuffer);
-  } else if (servoCalStep == CAL_SET_CENTER) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S0:CAL CTR:%03d%%",
-             servoTarget);
-    u8g2.drawStr(0, 17, statusBuffer);
-  } else {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S0:Srv:%03d%%", servoTarget);
-    u8g2.drawStr(0, 17, statusBuffer);
+  // Encoder 0: Arm — Row at y=11, text baseline y=17
+  // We don't have access to controller's internal calStep, so we just show Arm data
+  snprintf(statusBuffer, sizeof(statusBuffer), "S0:Arm:%+05d", armActual);
+  u8g2.drawStr(0, 17, statusBuffer);
 
-    // Live sliding dot: track from x=72 to x=124, y centered at 14
-    const int trackL = 72, trackR = 124, trackY = 14;
-    u8g2.drawHLine(trackL, trackY, trackR - trackL);
+  // Live sliding dot: track from x=72 to x=124, y centered at 14
+  const int trackL = 72, trackR = 124, trackY = 14;
+  u8g2.drawHLine(trackL, trackY, trackR - trackL);
 
-    // Tick marks at calibrated start and center positions
-    if (servoCalStart != -1) {
-      int startX =
-          map(constrain(servoCalStart, 0, 100), 0, 100, trackL, trackR);
-      u8g2.drawVLine(startX, trackY - 2, 5);
-    }
-    if (servoCalCenter != -1) {
-      int centerX =
-          map(constrain(servoCalCenter, 0, 100), 0, 100, trackL, trackR);
-      u8g2.drawVLine(centerX, trackY - 2, 5);
-    }
+  // Only draw track if calibrated
+  if (armCalStart != -1 && armCalCenter != -1 && armCalCenter != armCalStart) {
+    int startX = trackL;
+    int centerX = trackR;
+    
+    u8g2.drawVLine(startX, trackY - 2, 5);
+    u8g2.drawVLine(centerX, trackY - 2, 5);
 
-    // Filled dot at the actual servo position
-    int dotX = map(constrain(servoActual, 0, 100), 0, 100, trackL, trackR);
+    int dotX = map(armActual, armCalStart, armCalCenter, trackL, trackR);
+    dotX = constrain(dotX, trackL, trackR);
     u8g2.drawDisc(dotX, trackY, 2);
+  } else {
+    // Uncalibrated: just show a dot bouncing around or center it
+    u8g2.drawDisc((trackL+trackR)/2, trackY, 2);
   }
 
   // Encoder 1: Actuator — Row at y=20, text baseline y=26

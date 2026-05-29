@@ -2,11 +2,11 @@
 #include "controller.h" // Fixed include syntax
 #include <Arduino.h>
 
-#define HB_ENA 26
-#define HB_IN1 25
-#define HB_IN2 33
+#define HB_IN1 13
+#define HB_IN2 14
 
-#define HB_PWM_CH 1
+#define HB_PWM_CH_IN1 1
+#define HB_PWM_CH_IN2 2
 #define HB_PWM_FREQ 5000
 #define HB_PWM_RES 8
 

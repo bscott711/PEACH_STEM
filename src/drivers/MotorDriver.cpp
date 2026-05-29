@@ -11,8 +11,6 @@ void motorDriver::begin(HardwareSerial &serial,
   driver.setMicrostepsPerStep(16);
   driver.setCoolStepDurationThreshold(0);
 
-  driver.setStallGuardThreshold(16);
-
   driver.enable();
 
   driver.moveAtVelocity(0);
@@ -31,24 +29,3 @@ void motorDriver::setVelocity(int newSpeed) {
 }
 
 void motorDriver::stop() { driver.moveAtVelocity(0); }
-
-void motorDriver::setupHoming() {
-  Serial.println("Starting Hardware Sensorless Homing...");
-
-  driver.setRunCurrent(70);
-  driver.enableStealthChop();
-  driver.setCoolStepDurationThreshold(1048575);
-  driver.setStallGuardThreshold(15);
-}
-
-void motorDriver::finishHoming(int restoreThreshold) {
-  driver.setRunCurrent(RUN_CURRENT_PERCENT);
-  driver.enableStealthChop();
-  driver.setCoolStepDurationThreshold(0);
-  updateSGThreshold(restoreThreshold);
-}
-
-void motorDriver::updateSGThreshold(int newThreshold) {
-  newThreshold = constrain(newThreshold, 0, 255);
-  driver.setStallGuardThreshold(newThreshold);
-}

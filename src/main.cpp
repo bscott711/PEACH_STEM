@@ -4,7 +4,7 @@
 #include "tasks/ActuatorNode.h"
 #include "tasks/LCD_task.h"
 #include "tasks/MotorNode.h"
-#include "tasks/ServoNode.h"
+#include "tasks/ArmNode.h"
 #include "tasks/encoder_task.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -12,7 +12,7 @@
 #include <ArduinoOTA.h>
 
 // Global Node instances (extern in controller.cpp)
-ServoNode g_servoNode;
+ArmNode g_armNode;
 ActuatorNode g_actuatorNode;
 MotorNode g_motorNode;
 
@@ -80,9 +80,9 @@ void initWiFiAndOTA() {
         }
         xQueueSend(actuatorCmdQueue, &stopAct, 0);
       }
-      if (servoCmdQueue != NULL) {
-        ServoCommand stopServo = { ServoCmdAction::DEACTIVATE, 0.0f };
-        xQueueSend(servoCmdQueue, &stopServo, 0);
+      if (armCmdQueue != NULL) {
+        ArmCommand stopArm = { ArmCmdAction::SET_SPEED, 0.0f };
+        xQueueSend(armCmdQueue, &stopArm, 0);
       }
     })
     .onEnd([]() {
@@ -130,6 +130,9 @@ void setup() {
   // Start I2C Line (Used by encoder)
   Wire.begin(26, 27); // SDA = 26, SCL = 27
 
+  // Initialize shared UART for Steppers (Address 0 & 1)
+  Serial1.begin(115200, SERIAL_8N1, 33, 32);
+
   // Inits
   encoderInit();
   LCDInit();
@@ -150,12 +153,12 @@ void setup() {
     ESP_LOGE("MAIN", "Failed MotorNode");
   if (!g_actuatorNode.start("ActuatorNode", 4096, 2))
     ESP_LOGE("MAIN", "Failed ActuatorNode");
-  if (!g_servoNode.start("ServoNode", 4096, 2))
-    ESP_LOGE("MAIN", "Failed ServoNode");
+  if (!g_armNode.start("ArmNode", 4096, 2))
+    ESP_LOGE("MAIN", "Failed ArmNode");
 
   // 2. Link the global messaging queues
-  servoCmdQueue = g_servoNode.getCmdQueue();
-  servoTelQueue = g_servoNode.getTelQueue();
+  armCmdQueue = g_armNode.getCmdQueue();
+  armTelQueue = g_armNode.getTelQueue();
   actuatorCmdQueue = g_actuatorNode.getCmdQueue();
   actuatorTelQueue = g_actuatorNode.getTelQueue();
   motorCmdQueue = g_motorNode.getCmdQueue();

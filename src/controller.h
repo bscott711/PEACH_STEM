@@ -36,7 +36,7 @@ enum Enc3Menu { MENU_AUTO, MENU_GOTO_TOP, MENU_GOTO_MID, MENU_GOTO_BOT };
 // --- Sequence Engine Types ---
 enum SequenceAction {
   SEQ_MOVE_Z,        // Move Z-axis to target position (deterministic)
-  SEQ_MOVE_SERVO,    // Set servo to target percent
+  SEQ_MOVE_ARM,      // Move Arm
   SEQ_MOVE_ACTUATOR, // Set actuator to target percent
   SEQ_WAIT_MS,       // Interruptible delay (target = milliseconds)
   SEQ_WAIT_USER      // Wait for user button press to continue
@@ -68,8 +68,8 @@ extern SemaphoreHandle_t encoderStateMutex;
 extern EventGroupHandle_t controlEvents;
 
 // Queue handles declared in controller.cpp, extern here for access
-extern QueueHandle_t servoCmdQueue;
-extern QueueHandle_t servoTelQueue;
+extern QueueHandle_t armCmdQueue;
+extern QueueHandle_t armTelQueue;
 extern QueueHandle_t actuatorCmdQueue;
 extern QueueHandle_t actuatorTelQueue;
 extern QueueHandle_t motorCmdQueue;
@@ -87,7 +87,7 @@ void initSystemState();
 void saveMotorState();
 void saveMotorLimits();
 void saveActuatorLimits();
-void saveServoCalibration();
+void saveArmCalibration();
 
 // FreeRTOS task entries
 void controller_task(void *pvParameters);
