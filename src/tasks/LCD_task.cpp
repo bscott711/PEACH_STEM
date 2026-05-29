@@ -7,7 +7,11 @@ void LCD_task(void *parameter) {
   TickType_t lastWakeTime = xTaskGetTickCount();
 
   while (1) {
-    draw_menu(); // Draw Screen
+    if (g_otaActive) {
+      draw_otaScreen();
+    } else {
+      draw_menu(); // Draw Screen
+    }
 
     // Wait until next interval mark
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(interval));

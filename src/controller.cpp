@@ -19,6 +19,11 @@ QueueHandle_t actuatorTelQueue;
 QueueHandle_t motorCmdQueue;
 QueueHandle_t motorTelQueue;
 
+// --- OTA & WiFi Global States ---
+volatile bool g_otaActive = false;
+volatile int g_otaProgress = 0;
+const char* g_otaStatus = "Initializing";
+
 // Global Node instances (defined in main.cpp, extern here)
 extern ServoNode g_servoNode;
 extern ActuatorNode g_actuatorNode;

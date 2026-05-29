@@ -75,6 +75,14 @@ extern QueueHandle_t actuatorTelQueue;
 extern QueueHandle_t motorCmdQueue;
 extern QueueHandle_t motorTelQueue;
 
+// --- OTA & WiFi Global States ---
+extern volatile bool g_otaActive;
+extern volatile int g_otaProgress;
+extern const char* g_otaStatus;
+
+void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool failed);
+void draw_otaScreen();
+
 void initSystemState();
 void saveMotorState();
 void saveMotorLimits();

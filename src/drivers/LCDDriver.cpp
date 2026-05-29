@@ -18,7 +18,7 @@
  */
 
 // Instantiation for our LCD screen
-U8G2_SSD1306_128X64_NONAME_F_4W_HW_SPI u8g2(U8G2_R0, LCD_CS, LCD_DC, LCD_RESET);
+U8G2_SSD1309_128X64_NONAME0_F_4W_HW_SPI u8g2(U8G2_R0, LCD_CS, LCD_DC, LCD_RESET);
 
 // ============ Encapsulated LCD Globals ============
 static char lcdActionMessage[32] = "";
@@ -29,9 +29,7 @@ static uint32_t lcdBtnPressTime[4] = {0, 0, 0, 0};
 // LCD-specific mutex for thread-safe message buffer access
 static SemaphoreHandle_t lcdMutex = NULL;
 
-static void draw_splashScreen() {
-  u8g2.clearBuffer();
-
+static void draw_peachLogo() {
   // === Half-peach graphic (far left, centered vertically) ===
   const int cx = 22, cy = 34, r = 22;
 
@@ -68,6 +66,12 @@ static void draw_splashScreen() {
   // Small leaf
   u8g2.drawEllipse(cx + 10, cy - r - 3, 5, 2);
   u8g2.drawLine(cx + 7, cy - r - 4, cx + 14, cy - r - 3);
+}
+
+static void draw_splashScreen() {
+  u8g2.clearBuffer();
+
+  draw_peachLogo();
 
   // === Text (right of peach) ===
   u8g2.setFont(u8g2_font_helvB14_tr);
@@ -78,13 +82,78 @@ static void draw_splashScreen() {
 
   // Small version tag
   u8g2.setFont(u8g2_font_tiny5_tf);
-  u8g2.drawStr(50, 62, "v1.0");
+  u8g2.drawStr(50, 62, "v2.0");
+
+  u8g2.sendBuffer();
+}
+
+void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool failed) {
+  u8g2.clearBuffer();
+
+  draw_peachLogo();
+
+  // WiFi Connection text on the right
+  u8g2.setFont(u8g2_font_helvB08_tr);
+  u8g2.drawStr(50, 16, "WiFi Connect");
+  u8g2.drawHLine(50, 20, 78);
+
+  u8g2.setFont(u8g2_font_tiny5_tf);
+  char ssidBuf[32];
+  snprintf(ssidBuf, sizeof(ssidBuf), "SSID: %s", ssid);
+  u8g2.drawStr(50, 32, ssidBuf);
+
+  u8g2.drawStr(50, 44, status);
+
+  // Draw loading dots or fail warning
+  if (failed) {
+    u8g2.drawStr(50, 56, "Rebooting in 5s...");
+  } else {
+    // Show some simple animation based on attempt
+    char anim[16] = "";
+    int dotCount = (attempt % 4);
+    for (int i = 0; i < dotCount; i++) {
+      strcat(anim, ".");
+    }
+    u8g2.drawStr(50, 56, anim);
+  }
+
+  u8g2.sendBuffer();
+}
+
+void draw_otaScreen() {
+  u8g2.clearBuffer();
+
+  // Premium Header
+  u8g2.setFont(u8g2_font_helvB08_tr);
+  u8g2.drawStr(16, 10, "FIRMWARE UPDATE");
+  u8g2.drawHLine(0, 14, 128);
+
+  // Status message
+  u8g2.setFont(u8g2_font_tiny5_tf);
+  int statusWidth = strlen(g_otaStatus) * 4;
+  u8g2.drawStr((128 - statusWidth) / 2, 26, g_otaStatus);
+
+  // Progress Bar Frame
+  u8g2.drawFrame(10, 32, 108, 12);
+  
+  // Progress Bar Fill
+  int fillWidth = map(constrain(g_otaProgress, 0, 100), 0, 100, 0, 106);
+  if (fillWidth > 0) {
+    u8g2.drawBox(11, 33, fillWidth, 10);
+  }
+
+  // Progress text (centered at bottom)
+  char progressStr[32];
+  snprintf(progressStr, sizeof(progressStr), "%d%% completed", g_otaProgress);
+  int textWidth = strlen(progressStr) * 4;
+  u8g2.drawStr((128 - textWidth) / 2, 56, progressStr);
 
   u8g2.sendBuffer();
 }
 
 void LCDInit() {
   u8g2.begin();
+  u8g2.setBusClock(4000000); // Lower SPI speed to 4MHz to prevent screen tearing
   u8g2.setFont(u8g2_font_tiny5_tf);
 
   lcdMutex = xSemaphoreCreateMutex();

@@ -16,7 +16,7 @@
  * - Takes encoderStateMutex to write g_encoderState
  */
 
-#define ENCODER_INT_PIN 15
+#define ENCODER_INT_PIN 4
 
 void encoderInit();
 void encoderTask(void *pv);

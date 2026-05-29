@@ -6,11 +6,126 @@
 #include "tasks/MotorNode.h"
 #include "tasks/ServoNode.h"
 #include "tasks/encoder_task.h"
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
 
 // Global Node instances (extern in controller.cpp)
 ServoNode g_servoNode;
 ActuatorNode g_actuatorNode;
 MotorNode g_motorNode;
+
+const char* ssid = "sdsmtopn";
+
+void initWiFiAndOTA() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); // Disable power save for reliable OTA (UDP/mDNS)
+  WiFi.begin(ssid);
+
+  int attempt = 0;
+  Serial.println("Connecting to WiFi...");
+  
+  while (true) {
+    wl_status_t status = WiFi.status();
+    if (status == WL_CONNECTED) {
+      break;
+    }
+    
+    if (attempt >= 30) { // 15 seconds timeout
+      Serial.println("Connection Failed! Rebooting...");
+      draw_wifiStatus("Failed! Timeout", ssid, attempt, true);
+      delay(5000);
+      ESP.restart();
+    }
+    
+    draw_wifiStatus("Connecting", ssid, attempt, false);
+    delay(500);
+    attempt++;
+  }
+
+  // Once connected
+  Serial.println("WiFi Connected!");
+  IPAddress ip = WiFi.localIP();
+  char ipStr[32];
+  snprintf(ipStr, sizeof(ipStr), "IP: %s", ip.toString().c_str());
+  draw_wifiStatus(ipStr, ssid, 0, false);
+  delay(2000); // Show IP for 2 seconds
+
+  // Initialize ArduinoOTA
+  ArduinoOTA.setHostname("peach-pit-esp32");
+
+  ArduinoOTA
+    .onStart([]() {
+      g_otaActive = true;
+      g_otaProgress = 0;
+      
+      String type;
+      if (ArduinoOTA.getCommand() == U_FLASH) {
+        type = "sketch";
+        g_otaStatus = "Updating Sketch";
+      } else { // U_SPIFFS
+        type = "filesystem";
+        g_otaStatus = "Updating Filesystem";
+      }
+      Serial.println("Start updating " + type);
+      
+      // Safety Interlocks
+      if (motorCmdQueue != NULL) {
+        MotorCommand stopMotor = { MotorCmdAction::SET_SPEED, 0.0f };
+        xQueueSend(motorCmdQueue, &stopMotor, 0);
+      }
+      if (actuatorCmdQueue != NULL) {
+        ActuatorCommand stopAct = { ActuatorCmdAction::SET_TARGET, 0, ActSpeed::FAST };
+        ActuatorTelemetry actTel;
+        if (actuatorTelQueue != NULL && xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
+          stopAct.value = actTel.currentPercent;
+        }
+        xQueueSend(actuatorCmdQueue, &stopAct, 0);
+      }
+      if (servoCmdQueue != NULL) {
+        ServoCommand stopServo = { ServoCmdAction::DEACTIVATE, 0.0f };
+        xQueueSend(servoCmdQueue, &stopServo, 0);
+      }
+    })
+    .onEnd([]() {
+      g_otaProgress = 100;
+      g_otaStatus = "Success! Rebooting";
+      Serial.println("\nEnd");
+      g_otaActive = true;
+      // Removed draw_otaScreen() to prevent thread collision with LCD_task
+      delay(1000);
+      g_otaActive = false;
+    })
+    .onProgress([](unsigned int progress, unsigned int total) {
+      g_otaProgress = (progress * 100) / total;
+      Serial.printf("Progress: %u%%\r", g_otaProgress);
+    })
+    .onError([](ota_error_t error) {
+      g_otaActive = false;
+      Serial.printf("Error[%u]: ", error);
+      if (error == OTA_AUTH_ERROR) g_otaStatus = "Auth Failed";
+      else if (error == OTA_BEGIN_ERROR) g_otaStatus = "Begin Failed";
+      else if (error == OTA_CONNECT_ERROR) g_otaStatus = "Connect Failed";
+      else if (error == OTA_RECEIVE_ERROR) g_otaStatus = "Receive Failed";
+      else if (error == OTA_END_ERROR) g_otaStatus = "End Failed";
+    });
+
+  ArduinoOTA.begin();
+
+  Serial.println("OTA Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void otaTask(void *pvParameters) {
+  while (true) {
+    if (WiFi.status() == WL_CONNECTED) {
+      ArduinoOTA.handle();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
 
 void setup() {
   // Begin USB serial for debugging/monitoring
@@ -20,11 +135,14 @@ void setup() {
   initSystemState();
 
   // Start I2C Line (Used by encoder)
-  Wire.begin(21, 22);
+  Wire.begin(16, 21); // SDA = 16, SCL = 21
 
   // Inits
-  encoderInit();
+  // encoderInit(); // TEMPORARILY DISABLED
   LCDInit();
+
+  // Connect WiFi and setup OTA
+  initWiFiAndOTA();
 
   // Task Update Intervals
   static int lcd_interval = TASK_REFRESH_LCD;
@@ -51,9 +169,10 @@ void setup() {
   motorTelQueue = g_motorNode.getTelQueue();
 
   // 3. Create Dependent Tasks
-  xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 3, NULL);
+  // xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 3, NULL); // TEMPORARILY DISABLED
   xTaskCreate(controller_task, "Controller", 4096, NULL, 3, NULL);
   xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 2, NULL);
+  xTaskCreate(otaTask, "OTATask", 4096, NULL, 3, NULL);
 
   // --- NEW: LOWER SHIELD ---
   // Restore setup() to Priority 1, allowing the RTOS scheduler to take over

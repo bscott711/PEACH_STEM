@@ -4,12 +4,12 @@
 #include <Arduino.h>
 #include <U8g2lib.h>
 
-// SPI - OLED LCD
+// SPI - OLED/TFT LCD
 #define LCD_SCK 18
 #define LCD_MOSI 23
 #define LCD_CS 5
-#define LCD_DC 17
-#define LCD_RESET 16
+#define LCD_DC 21
+#define LCD_RESET 22
 
 // LCD Display Update Intervals (in ms)
 #define TASK_REFRESH_LCD 100
