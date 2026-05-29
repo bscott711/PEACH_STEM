@@ -46,11 +46,8 @@ void initWiFiAndOTA() {
 
   // Once connected
   Serial.println("WiFi Connected!");
-  IPAddress ip = WiFi.localIP();
-  char ipStr[32];
-  snprintf(ipStr, sizeof(ipStr), "IP: %s", ip.toString().c_str());
-  draw_wifiStatus(ipStr, ssid, 0, false);
-  delay(2000); // Show IP for 2 seconds
+  draw_wifiStatus("peach-pit-esp32.local", ssid, 0, false);
+  delay(2000); // Show name for 2 seconds
 
   // Initialize ArduinoOTA
   ArduinoOTA.setHostname("peach-pit-esp32");
@@ -111,19 +108,15 @@ void initWiFiAndOTA() {
       else if (error == OTA_END_ERROR) g_otaStatus = "End Failed";
     });
 
-  ArduinoOTA.begin();
-
-  Serial.println("OTA Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-}
-
-void otaTask(void *pvParameters) {
-  while (true) {
-    if (WiFi.status() == WL_CONNECTED) {
-      ArduinoOTA.handle();
+  if (WiFi.status() == WL_CONNECTED) {
+    if (MDNS.begin("peach-pit-esp32")) {
+      Serial.println("mDNS responder started: peach-pit-esp32.local");
     }
-    vTaskDelay(pdMS_TO_TICKS(10));
+    ArduinoOTA.setHostname("peach-pit-esp32");
+    ArduinoOTA.begin();
+    Serial.println("OTA Ready");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
   }
 }
 
@@ -135,10 +128,10 @@ void setup() {
   initSystemState();
 
   // Start I2C Line (Used by encoder)
-  Wire.begin(16, 21); // SDA = 16, SCL = 21
+  Wire.begin(26, 27); // SDA = 26, SCL = 27
 
   // Inits
-  // encoderInit(); // TEMPORARILY DISABLED
+  encoderInit();
   LCDInit();
 
   // Connect WiFi and setup OTA
@@ -169,10 +162,9 @@ void setup() {
   motorTelQueue = g_motorNode.getTelQueue();
 
   // 3. Create Dependent Tasks
-  // xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 3, NULL); // TEMPORARILY DISABLED
+  xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 3, NULL);
   xTaskCreate(controller_task, "Controller", 4096, NULL, 3, NULL);
   xTaskCreate(LCD_task, "LCD", 8192, &lcd_interval, 2, NULL);
-  xTaskCreate(otaTask, "OTATask", 4096, NULL, 3, NULL);
 
   // --- NEW: LOWER SHIELD ---
   // Restore setup() to Priority 1, allowing the RTOS scheduler to take over
@@ -180,6 +172,6 @@ void setup() {
 }
 
 void loop() {
-  // Delete the default Arduino loop task to reclaim its memory stack
-  vTaskDelete(NULL);
+  ArduinoOTA.handle();
+  vTaskDelay(pdMS_TO_TICKS(50));
 }
