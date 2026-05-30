@@ -10,6 +10,7 @@
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include "HardwareConfig.h"
 
 // Global Node instances (extern in controller.cpp)
 ArmNode g_armNode;
@@ -128,7 +129,7 @@ void setup() {
   initSystemState();
 
   // Start I2C Line (Used by encoder)
-  Wire.begin(26, 27); // SDA = 26, SCL = 27
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
   // Initialize shared UART for Steppers (Address 0 & 1)
   Serial1.begin(115200, SERIAL_8N1, RXD1, TXD1);

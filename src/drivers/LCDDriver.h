@@ -3,13 +3,7 @@
 #include "drivers/EncoderDriver.h"
 #include <Arduino.h>
 #include <U8g2lib.h>
-
-// SPI - OLED/TFT LCD
-#define LCD_SCK 18
-#define LCD_MOSI 23
-#define LCD_CS 5
-#define LCD_DC 21
-#define LCD_RESET 22
+#include "HardwareConfig.h"
 
 // LCD Display Update Intervals (in ms)
 #define TASK_REFRESH_LCD 100
