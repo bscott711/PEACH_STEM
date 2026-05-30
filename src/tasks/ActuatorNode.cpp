@@ -95,9 +95,9 @@ void ActuatorNode::processCommand(const ActuatorCommand& cmd) {
 }
 
 void ActuatorNode::hwUpdate() {
-    uint32_t extendTime = (currentSpeedMode == ActSpeed::FAST) ? 1000 : 4000;
+    uint32_t extendTime = (currentSpeedMode == ActSpeed::FAST) ? 10000 : 20000;
     float dynamicPctPerTick = (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / (float)extendTime;
-    uint8_t pwmVal = (currentSpeedMode == ActSpeed::FAST) ? 255 : 64;
+    uint8_t pwmVal = (currentSpeedMode == ActSpeed::FAST) ? 255 : 128;
 
     // Non-blocking movement evaluation with float-based ramping
     if (currentPercent < targetPercent) {
