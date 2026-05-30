@@ -131,7 +131,7 @@ void setup() {
   Wire.begin(26, 27); // SDA = 26, SCL = 27
 
   // Initialize shared UART for Steppers (Address 0 & 1)
-  Serial1.begin(115200, SERIAL_8N1, 33, 32);
+  Serial1.begin(115200, SERIAL_8N1, RXD1, TXD1);
 
   // Inits
   encoderInit();

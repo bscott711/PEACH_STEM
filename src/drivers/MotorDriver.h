@@ -1,8 +1,8 @@
 #pragma once
 #include <TMC2209.h>
 
-#define TXD1 32
-#define RXD1 33
+#define TXD1 17 // TX2 pin
+#define RXD1 16 // RX2 pin
 
 #define ENABLE_OPTICAL_ENDSTOPS 0
 #define TOP_ENDSTOP_PIN 35
