@@ -95,7 +95,7 @@ void ActuatorNode::processCommand(const ActuatorCommand& cmd) {
 }
 
 void ActuatorNode::hwUpdate() {
-    uint32_t extendTime = (currentSpeedMode == ActSpeed::FAST) ? 10000 : 20000;
+    uint32_t extendTime = (currentSpeedMode == ActSpeed::FAST) ? FULL_EXTEND_TIME_MS : (FULL_EXTEND_TIME_MS * 2);
     float dynamicPctPerTick = (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / (float)extendTime;
     uint8_t pwmVal = (currentSpeedMode == ActSpeed::FAST) ? 255 : 128;
 

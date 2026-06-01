@@ -583,7 +583,7 @@ void controller_task(void *pvParameters) {
   }
 
   TickType_t lastWakeTime = xTaskGetTickCount();
-  const TickType_t CONTROLLER_INTERVAL = pdMS_TO_TICKS(50);
+  const TickType_t CONTROLLER_INTERVAL = pdMS_TO_TICKS(10);
 
   while (1) {
     // Process encoder inputs and dispatch commands

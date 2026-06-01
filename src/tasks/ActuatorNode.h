@@ -25,7 +25,7 @@ private:
     Preferences preferences;
     
     // Motion parameters
-    static constexpr uint32_t FULL_EXTEND_TIME_MS = 1000;  // Time 0% to 100%
+    static constexpr uint32_t FULL_EXTEND_TIME_MS = 800;  // Time 0% to 100%
     
 public:
     ActuatorNode();
