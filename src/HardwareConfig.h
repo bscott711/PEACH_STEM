@@ -41,8 +41,8 @@
 // ==========================================
 // Linear Actuator (DRV8871 H-Bridge)
 // ==========================================
-#define HB_IN1 13
-#define HB_IN2 14
+#define HB_IN1 33
+#define HB_IN2 32
 // PWM Channels for ledc
 #define HB_PWM_CH_IN1 1
 #define HB_PWM_CH_IN2 2
