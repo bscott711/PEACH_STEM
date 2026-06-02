@@ -310,7 +310,7 @@ static void draw_encoderStatus() {
 
   // Encoder 0: Arm — Row at y=11, text baseline y=17
   // We don't have access to controller's internal calStep, so we just show Arm data
-  snprintf(statusBuffer, sizeof(statusBuffer), "S0:Arm:%+05d", armActual);
+  snprintf(statusBuffer, sizeof(statusBuffer), "S0:Arm:%03d%%", armTarget);
   u8g2.drawStr(0, 17, statusBuffer);
 
   // Live sliding dot: track from x=72 to x=124, y centered at 14

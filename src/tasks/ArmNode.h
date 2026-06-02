@@ -40,6 +40,7 @@ public:
     
     bool setSpeed(int speed);
     bool stop();
+    bool jog(float relativeSteps);
     bool setTarget(float percent);
     bool setPosOut();
     bool setPosIn();

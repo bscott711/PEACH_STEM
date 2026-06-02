@@ -13,7 +13,8 @@ enum class ArmCmdAction {
     STOP,            // Immediate halt (encoder stopped turning)
     SET_POS_OUT,     // Save current physical position as "Out"
     SET_POS_IN,      // Save current physical position as "In"
-    CLEAR_CAL        // Clear both calibration points
+    CLEAR_CAL,       // Clear both calibration points
+    JOG              // Jog target by relative steps
 };
 
 struct ArmCommand {

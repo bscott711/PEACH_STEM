@@ -70,6 +70,14 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             }
             break;
             
+        case ArmCmdAction::JOG:
+            if (!isTrackingTarget) {
+                targetTrackingAbsSteps = currentPosition;
+                isTrackingTarget = true;
+            }
+            targetTrackingAbsSteps += cmd.value;
+            break;
+            
         case ArmCmdAction::SET_POS_OUT:
             posOut = (int)currentPosition;
             if (preferences.begin("peach", false)) {
@@ -158,6 +166,13 @@ bool ArmNode::stop() {
     ArmCommand cmd;
     cmd.action = ArmCmdAction::STOP;
     cmd.value = 0.0f;
+    return sendCommand(cmd);
+}
+
+bool ArmNode::jog(float relativeSteps) {
+    ArmCommand cmd;
+    cmd.action = ArmCmdAction::JOG;
+    cmd.value = relativeSteps;
     return sendCommand(cmd);
 }
 

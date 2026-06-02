@@ -146,20 +146,16 @@ static void handleArmEncoder() {
 
   // 6. Calibration mode logic
   if (calStep != CAL_OFF) {
-    // Map encoder deltas to stepper jogging (proportional speed)
+    // Jog the arm directly based on encoder delta (1 click = 100 steps)
     int delta = currentPos - lastEncPos;
     if (delta != 0) {
       lastEncPos = currentPos;
-      // Jog the arm directly based on encoder delta
-      int jogSpeed = delta * 5000; 
-      g_armNode.setSpeed(jogSpeed);
-    } else {
-      g_armNode.stop(); // Stop when encoder stops turning
+      g_armNode.jog(delta * 100.0f);
     }
 
     if (btnPressed) {
       LCD_notifyButtonPress(0);
-      g_armNode.stop(); // Ensure stopped before saving
+      g_armNode.stop(); // Stop any residual motion
 
       if (calStep == CAL_SET_OUT) {
         g_armNode.setPosOut();
@@ -173,9 +169,17 @@ static void handleArmEncoder() {
         LCD_setMessage("CAL: Saved!");
         printf("Arm CAL: In saved, calibration finished\n");
         
-        // Reset encoder position to 0% (Out) for normal operation
+        // Convert the current physical position to a percentage for normal mode
+        float range = (float)(posIn - posOut);
+        int currentPct = 100;
+        if (abs(range) > 1.0f) {
+           currentPct = (int)(((currentAbsPos - posOut) / range) * 100.0f);
+        }
+        currentPct = constrain(currentPct, 0, 100);
+
+        // Reset encoder position to match the percentage
         if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-          g_encoderState.position[0] = 0;
+          g_encoderState.position[0] = currentPct;
           xSemaphoreGive(encoderStateMutex);
         }
       }
@@ -183,18 +187,25 @@ static void handleArmEncoder() {
     return; // Skip normal mode processing while calibrating
   }
 
-  // 7. Normal mode: encoder jog (move while turning, stop when done)
-  static int32_t lastNormalEncPos = 0;
-  
-  int delta = currentPos - lastNormalEncPos;
-  if (delta != 0) {
-    lastNormalEncPos = currentPos;
-    // Proportional jog: turn faster → move faster
-    int jogSpeed = delta * 5000;
-    g_armNode.setSpeed(jogSpeed);
-  } else {
-    // Encoder stopped — halt the motor (but don't interfere with target tracking)
-    g_armNode.stop();
+  // 7. Normal mode: encoder adjusts arm target percentage (0-100%)
+  static int32_t lastTargetPct = -1;
+  int targetPct = currentPos;
+  targetPct = constrain(targetPct, 0, 100);
+
+  // Sync the hardware encoder back so it doesn't run away outside 0-100
+  if (targetPct != currentPos) {
+    if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      g_encoderState.position[0] = targetPct;
+      currentPos = targetPct;
+      xSemaphoreGive(encoderStateMutex);
+    }
+  }
+
+  if (targetPct != lastTargetPct) {
+    lastTargetPct = targetPct;
+    if (posOut != -1 && posIn != -1) {
+      g_armNode.setTarget((float)targetPct);
+    }
   }
 
   // 8. Short press: toggle between Out (0%) and In (100%)
@@ -206,14 +217,7 @@ static void handleArmEncoder() {
       return;
     }
 
-    // Determine current approximate percentage
-    float range = (float)(posIn - posOut);
-    float pct = 50.0f; // Default if range is zero
-    if (abs(range) > 1.0f) {
-      pct = ((currentAbsPos - posOut) / range) * 100.0f;
-    }
-
-    int newTargetPct = (pct < 50.0f) ? 100 : 0; // Toggle to opposite end
+    int newTargetPct = (targetPct < 50) ? 100 : 0; // Toggle to opposite end
 
     // Interlock: Block movement to 0% (Out) if Z-axis is not at Top clearance
     if (newTargetPct == 0) {
@@ -228,6 +232,13 @@ static void handleArmEncoder() {
         return; // Abort
       }
     }
+
+    // Sync encoder so next turn starts from the toggled position
+    if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      g_encoderState.position[0] = newTargetPct;
+      xSemaphoreGive(encoderStateMutex);
+    }
+    lastTargetPct = newTargetPct;
 
     LCD_setMessage(newTargetPct == 100 ? "Arm: In" : "Arm: Out");
     g_armNode.setTarget((float)newTargetPct);
