@@ -17,7 +17,7 @@ MotorNode::MotorNode()
     , botEndstopTriggered(false)
     , homingState(H_IDLE)
     , homingStartTime(0)
-    , armPercent(0)
+    , armStepPos(0)
     , armCalStart(-1) {
     limits[0] = 0.0f; limits[1] = 0.0f; limits[2] = 0.0f;
     limitSet[0] = false; limitSet[1] = false; limitSet[2] = false;
@@ -58,6 +58,9 @@ void MotorNode::hwInit() {
                  limits[0], limitSet[0] ? "Y" : "N",
                  limits[1], limitSet[1] ? "Y" : "N",
                  limits[2], limitSet[2] ? "Y" : "N");
+        
+        // Close NVS after loading — reopen per-write
+        preferences.end();
     }
 }
 
@@ -79,33 +82,60 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
         case MotorCmdAction::SET_LIMIT_BOT:
             limits[0] = cmd.value;
             limitSet[0] = true;
+            if (preferences.begin("peach", false)) {
+                preferences.putFloat("limB", limits[0]);
+                preferences.putBool("limS_B", true);
+                preferences.end();
+            }
             ESP_LOGI(TAG, "Bottom limit set to %.2f", limits[0]);
             break;
             
         case MotorCmdAction::SET_LIMIT_MID:
             limits[1] = cmd.value;
             limitSet[1] = true;
+            if (preferences.begin("peach", false)) {
+                preferences.putFloat("limM", limits[1]);
+                preferences.putBool("limS_M", true);
+                preferences.end();
+            }
             ESP_LOGI(TAG, "Middle limit set to %.2f", limits[1]);
             break;
             
         case MotorCmdAction::SET_LIMIT_TOP:
             limits[2] = cmd.value;
             limitSet[2] = true;
+            if (preferences.begin("peach", false)) {
+                preferences.putFloat("limT", limits[2]);
+                preferences.putBool("limS_T", true);
+                preferences.end();
+            }
             ESP_LOGI(TAG, "Top limit set to %.2f", limits[2]);
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_BOT:
             limitSet[0] = false;
+            if (preferences.begin("peach", false)) {
+                preferences.putBool("limS_B", false);
+                preferences.end();
+            }
             ESP_LOGI(TAG, "Bottom limit cleared");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_MID:
             limitSet[1] = false;
+            if (preferences.begin("peach", false)) {
+                preferences.putBool("limS_M", false);
+                preferences.end();
+            }
             ESP_LOGI(TAG, "Middle limit cleared");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_TOP:
             limitSet[2] = false;
+            if (preferences.begin("peach", false)) {
+                preferences.putBool("limS_T", false);
+                preferences.end();
+            }
             ESP_LOGI(TAG, "Top limit cleared");
             break;
             
@@ -119,8 +149,8 @@ void MotorNode::hwUpdate() {
     // Read arm telemetry for interlock logic
     ArmTelemetry armTel;
     if (armTelQueue != NULL && xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
-        armPercent = (int)armTel.currentPosition;
-        armCalStart = armTel.calStart;
+        armStepPos = (int)armTel.currentPosition;
+        armCalStart = armTel.posOut;  // Use posOut as the "start" position for interlock
     }
     
     // Unlock motor if collision was cleared (not applicable anymore but kept for safety)
@@ -202,7 +232,7 @@ void MotorNode::hwUpdate() {
         
         // Very basic interlock: If arm is not at Start (i.e. it's swung out), block going below Mid.
         // The user specifies start and center. If current != start, we assume it's out.
-        bool swungOut = (armCalStart != -1) && (abs(armPercent - armCalStart) > 500); 
+        bool swungOut = (armCalStart != -1) && (abs(armStepPos - armCalStart) > 500); 
         
         if (swungOut) {
             if (limitSet[1]) {
@@ -315,82 +345,40 @@ bool MotorNode::setLimitBot(float position) {
     MotorCommand cmd;
     cmd.action = MotorCmdAction::SET_LIMIT_BOT;
     cmd.value = position;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin("peach", false)) {
-        preferences.putFloat("limB", limits[0]);
-        preferences.putBool("limS_B", limitSet[0]);
-        preferences.end();
-        ESP_LOGI(TAG, "Saved bottom limit to NVS: %.2f", limits[0]);
-    }
-    return result;
+    return sendCommand(cmd);
 }
 
 bool MotorNode::setLimitMid(float position) {
     MotorCommand cmd;
     cmd.action = MotorCmdAction::SET_LIMIT_MID;
     cmd.value = position;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin("peach", false)) {
-        preferences.putFloat("limM", limits[1]);
-        preferences.putBool("limS_M", limitSet[1]);
-        preferences.end();
-        ESP_LOGI(TAG, "Saved middle limit to NVS: %.2f", limits[1]);
-    }
-    return result;
+    return sendCommand(cmd);
 }
 
 bool MotorNode::setLimitTop(float position) {
     MotorCommand cmd;
     cmd.action = MotorCmdAction::SET_LIMIT_TOP;
     cmd.value = position;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin("peach", false)) {
-        preferences.putFloat("limT", limits[2]);
-        preferences.putBool("limS_T", limitSet[2]);
-        preferences.end();
-        ESP_LOGI(TAG, "Saved top limit to NVS: %.2f", limits[2]);
-    }
-    return result;
+    return sendCommand(cmd);
 }
 
 bool MotorNode::clearLimitBot() {
     MotorCommand cmd;
     cmd.action = MotorCmdAction::CLEAR_LIMIT_BOT;
     cmd.value = 0;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin("peach", false)) {
-        preferences.putBool("limS_B", false);
-        preferences.end();
-    }
-    return result;
+    return sendCommand(cmd);
 }
 
 bool MotorNode::clearLimitMid() {
     MotorCommand cmd;
     cmd.action = MotorCmdAction::CLEAR_LIMIT_MID;
     cmd.value = 0;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin("peach", false)) {
-        preferences.putBool("limS_M", false);
-        preferences.end();
-    }
-    return result;
+    return sendCommand(cmd);
 }
 
 bool MotorNode::clearLimitTop() {
     MotorCommand cmd;
     cmd.action = MotorCmdAction::CLEAR_LIMIT_TOP;
     cmd.value = 0;
-    bool result = sendCommand(cmd);
-    
-    if (result && preferences.begin("peach", false)) {
-        preferences.putBool("limS_T", false);
-        preferences.end();
-    }
-    return result;
+    return sendCommand(cmd);
 }

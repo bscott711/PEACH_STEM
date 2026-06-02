@@ -6,7 +6,7 @@
 #include "HardwareConfig.h"
 
 // LCD Display Update Intervals (in ms)
-#define TASK_REFRESH_LCD 100
+#define TASK_REFRESH_LCD 50
 
 // Helper to set a temporary message (call from any task)
 void LCD_setMessage(const char *msg);

@@ -6,10 +6,11 @@ static const char* TAG = "ARM_NODE";
 ArmNode::ArmNode()
     : currentPosition(0.0f)
     , targetSpeed(0)
-    , calStart(-1)
-    , calCenter(-1)
+    , posOut(-1)
+    , posIn(-1)
     , isTrackingTarget(false)
-    , targetTrackingAbsSteps(0.0f) {
+    , targetTrackingAbsSteps(0.0f)
+    , lastSavedPosition(-999.0f) {
 }
 
 ArmNode::~ArmNode() {
@@ -22,16 +23,23 @@ void ArmNode::hwInit() {
     vTaskDelay(pdMS_TO_TICKS(200));
     driver.begin(Serial1, TMC2209::SERIAL_ADDRESS_1);
     
-    currentPosition = 0.0f;
-    
     // Open NVS namespace
     if (!preferences.begin("peach", false)) {
         ESP_LOGE(TAG, "Failed to open NVS namespace");
     } else {
-        calStart = preferences.getInt("armCalS", -1);
-        calCenter = preferences.getInt("armCalC", -1);
+        // Load calibration positions
+        posOut = preferences.getInt("armPosO", -1);
+        posIn = preferences.getInt("armPosI", -1);
         
-        ESP_LOGI(TAG, "Loaded Arm cal: Start=%d, Center=%d", calStart, calCenter);
+        // Load last known position (restored on boot)
+        float lastPos = preferences.getFloat("armPos", 0.0f);
+        currentPosition = lastPos;
+        lastSavedPosition = lastPos;
+        
+        // Close NVS after loading — reopen per-write
+        preferences.end();
+        
+        ESP_LOGI(TAG, "Loaded Arm: posOut=%d, posIn=%d, lastPos=%.2f", posOut, posIn, lastPos);
     }
 }
 
@@ -43,9 +51,18 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             ESP_LOGD(TAG, "Arm set speed: %d", targetSpeed);
             break;
             
+        case ArmCmdAction::STOP:
+            targetSpeed = 0;
+            // Don't clear isTrackingTarget — if we were tracking, the 
+            // P-controller in hwUpdate will resume. STOP is for jog mode only.
+            if (!isTrackingTarget) {
+                ESP_LOGD(TAG, "Arm stopped");
+            }
+            break;
+            
         case ArmCmdAction::SET_TARGET:
-            if (calStart != -1 && calCenter != -1) {
-                targetTrackingAbsSteps = calStart + (cmd.value / 100.0f) * (calCenter - calStart);
+            if (posOut != -1 && posIn != -1) {
+                targetTrackingAbsSteps = posOut + (cmd.value / 100.0f) * (posIn - posOut);
                 isTrackingTarget = true;
                 ESP_LOGI(TAG, "Arm tracking target: %.2f%% -> %.2f steps", cmd.value, targetTrackingAbsSteps);
             } else {
@@ -53,25 +70,33 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             }
             break;
             
-        case ArmCmdAction::SET_CAL_START:
-            calStart = (cmd.value < 0) ? -1 : (int)currentPosition;
+        case ArmCmdAction::SET_POS_OUT:
+            posOut = (int)currentPosition;
             if (preferences.begin("peach", false)) {
-                preferences.putInt("armCalS", calStart);
+                preferences.putInt("armPosO", posOut);
                 preferences.end();
             }
-            ESP_LOGI(TAG, "Arm CalStart set to %d", calStart);
+            ESP_LOGI(TAG, "Arm posOut set to %d", posOut);
             break;
             
-        case ArmCmdAction::SET_CAL_CENTER:
-            calCenter = (cmd.value < 0) ? -1 : (int)currentPosition;
+        case ArmCmdAction::SET_POS_IN:
+            posIn = (int)currentPosition;
             if (preferences.begin("peach", false)) {
-                preferences.putInt("armCalC", calCenter);
+                preferences.putInt("armPosI", posIn);
                 preferences.end();
             }
-            ESP_LOGI(TAG, "Arm CalCenter set to %d", calCenter);
+            ESP_LOGI(TAG, "Arm posIn set to %d", posIn);
             break;
             
-        case ArmCmdAction::GET_CAL_DATA:
+        case ArmCmdAction::CLEAR_CAL:
+            posOut = -1;
+            posIn = -1;
+            if (preferences.begin("peach", false)) {
+                preferences.putInt("armPosO", -1);
+                preferences.putInt("armPosI", -1);
+                preferences.end();
+            }
+            ESP_LOGI(TAG, "Arm calibration cleared");
             break;
     }
 }
@@ -80,34 +105,45 @@ void ArmNode::hwUpdate() {
     if (isTrackingTarget) {
         float error = targetTrackingAbsSteps - currentPosition;
         
-        // P-Controller
-        int pControlSpeed = (int)(error * 10.0f); // Gain
+        // P-Controller with proportional gain
+        int pControlSpeed = (int)(error * 10.0f);
         int maxTrackingSpeed = 20000;
         
         targetSpeed = constrain(pControlSpeed, -maxTrackingSpeed, maxTrackingSpeed);
         
-        // Deadband
+        // Deadband — close enough to target, stop tracking
         if (abs(error) < 5.0f) {
             targetSpeed = 0;
             isTrackingTarget = false;
         }
     }
 
-    // Basic velocity control and position integration
+    // Velocity control and position integration
     if (targetSpeed != 0) {
         float deltaPos = (1.372e-6f * (float)targetSpeed * (float)TASK_UPDATE_INTERVAL_MS);
         currentPosition += deltaPos;
     }
     
     driver.setVelocity(targetSpeed);
+    
+    // Save position to NVS when stopped and position has changed
+    if (targetSpeed == 0 && abs(currentPosition - lastSavedPosition) > 0.1f) {
+        if (preferences.begin("peach", false)) {
+            preferences.putFloat("armPos", currentPosition);
+            preferences.end();
+            lastSavedPosition = currentPosition;
+            ESP_LOGI(TAG, "Saved arm position: %.2f", currentPosition);
+        }
+    }
 }
 
 ArmTelemetry ArmNode::generateTelemetry() {
     ArmTelemetry tel;
     tel.currentPosition = currentPosition;
     tel.targetPosition = isTrackingTarget ? targetTrackingAbsSteps : currentPosition;
-    tel.calStart = calStart;
-    tel.calCenter = calCenter;
+    tel.posOut = posOut;
+    tel.posIn = posIn;
+    tel.isMoving = (targetSpeed != 0);
     return tel;
 }
 
@@ -118,6 +154,13 @@ bool ArmNode::setSpeed(int speed) {
     return sendCommand(cmd);
 }
 
+bool ArmNode::stop() {
+    ArmCommand cmd;
+    cmd.action = ArmCmdAction::STOP;
+    cmd.value = 0.0f;
+    return sendCommand(cmd);
+}
+
 bool ArmNode::setTarget(float percent) {
     ArmCommand cmd;
     cmd.action = ArmCmdAction::SET_TARGET;
@@ -125,16 +168,23 @@ bool ArmNode::setTarget(float percent) {
     return sendCommand(cmd);
 }
 
-bool ArmNode::setCalStart(int value) {
+bool ArmNode::setPosOut() {
     ArmCommand cmd;
-    cmd.action = ArmCmdAction::SET_CAL_START;
-    cmd.value = (float)value;
+    cmd.action = ArmCmdAction::SET_POS_OUT;
+    cmd.value = 0.0f;
     return sendCommand(cmd);
 }
 
-bool ArmNode::setCalCenter(int value) {
+bool ArmNode::setPosIn() {
     ArmCommand cmd;
-    cmd.action = ArmCmdAction::SET_CAL_CENTER;
-    cmd.value = (float)value;
+    cmd.action = ArmCmdAction::SET_POS_IN;
+    cmd.value = 0.0f;
+    return sendCommand(cmd);
+}
+
+bool ArmNode::clearCal() {
+    ArmCommand cmd;
+    cmd.action = ArmCmdAction::CLEAR_CAL;
+    cmd.value = 0.0f;
     return sendCommand(cmd);
 }

@@ -74,7 +74,7 @@ void initWiFiAndOTA() {
         xQueueSend(motorCmdQueue, &stopMotor, 0);
       }
       if (actuatorCmdQueue != NULL) {
-        ActuatorCommand stopAct = { ActuatorCmdAction::SET_TARGET, 0, ActSpeed::FAST };
+        ActuatorCommand stopAct = { ActuatorCmdAction::SET_TARGET, 0 };
         ActuatorTelemetry actTel;
         if (actuatorTelQueue != NULL && xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
           stopAct.value = actTel.currentPercent;

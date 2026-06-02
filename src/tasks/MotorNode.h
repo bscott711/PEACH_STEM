@@ -41,7 +41,7 @@ private:
     TickType_t homingStartTime;
     
     // Arm interlock data (read from telemetry)
-    int armPercent;
+    int armStepPos;
     int armCalStart;
     
 public:

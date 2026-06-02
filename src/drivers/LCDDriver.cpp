@@ -264,14 +264,13 @@ static void draw_encoderStatus() {
   // Static caches so the UI doesn't zero out if the mutex times out
   static int armTarget = 0, armActual = 0, actuatorTarget = 0,
              actuatorActual = 0, motorTarget = 0;
-  static int armCalStart = 0, armCalCenter = 100;
+  static int armPosOut = 0, armPosIn = 100;
   static DeviceMode currentMode = IDLE;
-  static enum ArmCalibrationStep { CAL_OFF, CAL_SET_START, CAL_SET_CENTER } armCalStep = CAL_OFF;
   static float motorLimits[3] = {0.0f, 0.0f, 0.0f};
   static bool motorLimitSet[3] = {false, false, false};
   static float currentPos = 0.0f;
   static Enc3Menu enc3MenuSelection = MENU_AUTO;
-  static Enc1Menu enc1MenuSelection = MENU_ACT_MAN_FAST;
+  static Enc1Menu enc1MenuSelection = MENU_ACT_MAN;
 
   // 1. Read motion subsystem state via lock-free telemetry queues
   ArmTelemetry armTel;
@@ -281,8 +280,8 @@ static void draw_encoderStatus() {
   if (xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
     armTarget = (int)armTel.targetPosition;
     armActual = (int)armTel.currentPosition;
-    armCalStart = armTel.calStart;
-    armCalCenter = armTel.calCenter;
+    armPosOut = armTel.posOut;
+    armPosIn = armTel.posIn;
   }
   
   if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
@@ -319,14 +318,14 @@ static void draw_encoderStatus() {
   u8g2.drawHLine(trackL, trackY, trackR - trackL);
 
   // Only draw track if calibrated
-  if (armCalStart != -1 && armCalCenter != -1 && armCalCenter != armCalStart) {
+  if (armPosOut != -1 && armPosIn != -1 && armPosIn != armPosOut) {
     int startX = trackL;
     int centerX = trackR;
     
     u8g2.drawVLine(startX, trackY - 2, 5);
     u8g2.drawVLine(centerX, trackY - 2, 5);
 
-    int dotX = map(armActual, armCalStart, armCalCenter, trackL, trackR);
+    int dotX = map(armActual, armPosOut, armPosIn, trackL, trackR);
     dotX = constrain(dotX, trackL, trackR);
     u8g2.drawDisc(dotX, trackY, 2);
   } else {
@@ -335,11 +334,8 @@ static void draw_encoderStatus() {
   }
 
   // Encoder 1: Actuator — Row at y=20, text baseline y=26
-  if (enc1MenuSelection == MENU_ACT_MAN_FAST) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S1:Fast:%03d%%",
-             actuatorTarget);
-  } else if (enc1MenuSelection == MENU_ACT_MAN_SLOW) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S1:Slow:%03d%%",
+  if (enc1MenuSelection == MENU_ACT_MAN) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S1:Man:%03d%%",
              actuatorTarget);
   } else if (enc1MenuSelection == MENU_ACT_GOTO_TOP) {
     snprintf(statusBuffer, sizeof(statusBuffer), "S1:ToTop:%03d%%",

@@ -15,7 +15,6 @@ private:
     float currentPercent;
     int targetPercent;
     float lastSavedPercent;
-    ActSpeed currentSpeedMode;
     
     // Limit positions (NVS persisted)
     int limits[3];       // [0]=Bot, [1]=Mid, [2]=Top
@@ -38,7 +37,7 @@ public:
     ActuatorTelemetry generateTelemetry() override;
     
     // Convenience methods for sending commands
-    bool setTarget(int percent, ActSpeed speed = ActSpeed::FAST);
+    bool setTarget(int percent);
     bool setLimitBot(int percent);
     bool setLimitMid(int percent);
     bool setLimitTop(int percent);

@@ -10,8 +10,6 @@
 #define RUN_CURRENT_PERCENT 100
 #define SERIAL_BAUD_RATE 115200
 
-#define TASK_UPDATE_MOTOR 10
-
 class motorDriver {
 public:
   void begin(HardwareSerial &serial, TMC2209::SerialAddress address);

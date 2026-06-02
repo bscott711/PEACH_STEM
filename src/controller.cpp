@@ -35,7 +35,7 @@ SemaphoreHandle_t encoderStateMutex;
 EventGroupHandle_t controlEvents;
 
 SystemState systemState = {.mode = IDLE,
-                           .enc1MenuSelection = MENU_ACT_MAN_FAST,
+                           .enc1MenuSelection = MENU_ACT_MAN,
                            .enc3MenuSelection = MENU_AUTO,
                            .collisionDetected = false,
                            .collisionTimestamp = 0};
@@ -54,7 +54,7 @@ void initSystemState() {
   // Initialize minimal state - subsystem state is managed by Active Nodes
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
     systemState.mode = IDLE;
-    systemState.enc1MenuSelection = MENU_ACT_MAN_FAST;
+    systemState.enc1MenuSelection = MENU_ACT_MAN;
     systemState.enc3MenuSelection = MENU_AUTO;
     systemState.collisionDetected = false;
     xSemaphoreGive(systemStateMutex);
@@ -69,11 +69,6 @@ void saveMotorState() {
 void saveMotorLimits() {
   // Motor and Actuator nodes manage their own NVS saves
   ESP_LOGI("CTRL", "Limits saved by respective Nodes");
-}
-
-void saveServoCalibration() {
-  // Servo node manages its own NVS saves
-  ESP_LOGI("CTRL", "Servo calibration saved by ServoNode");
 }
 
 void saveActuatorLimits() {
@@ -113,69 +108,72 @@ static void handleArmEncoder() {
 
   // 2. Read current calibration state from arm telemetry
   ArmTelemetry armTel;
-  int calStart = -1, calCenter = -1;
+  int posOut = -1, posIn = -1;
   float currentAbsPos = 0;
   if (xQueuePeek(armTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
-    calStart = armTel.calStart;
-    calCenter = armTel.calCenter;
+    posOut = armTel.posOut;
+    posIn = armTel.posIn;
     currentAbsPos = armTel.currentPosition;
   }
 
-  // 3. Very Long Press (Double): Clear Calibration
-  if (doublePressed && calStart == -1 && calCenter == -1) {
-    LCD_setMessage("CAL: Already Cleared");
-    return;
-  }
+  // 3. Calibration state machine (persistent across calls)
+  enum ArmCalibrationStep { CAL_OFF, CAL_SET_OUT, CAL_SET_IN };
+  static ArmCalibrationStep calStep = CAL_OFF;
+  static int32_t lastEncPos = 0;
+
+  // 4. Very Long Press (Double): Clear Calibration
   if (doublePressed) {
-    g_armNode.setCalStart(-1);
-    g_armNode.setCalCenter(-1);
-    LCD_setMessage("CAL: Cleared");
-    printf("Arm CAL: Cleared preset positions to -1\n");
+    if (posOut == -1 && posIn == -1) {
+      LCD_setMessage("CAL: Already Clear");
+    } else {
+      g_armNode.clearCal();
+      LCD_setMessage("CAL: Cleared");
+      printf("Arm CAL: Cleared preset positions\n");
+    }
+    calStep = CAL_OFF;
     return;
   }
 
-  // 4. Long press: enter calibration mode
-  if (longPressed) {
+  // 5. Long press: enter calibration mode
+  if (longPressed && calStep == CAL_OFF) {
+    calStep = CAL_SET_OUT;
+    lastEncPos = currentPos;
     LCD_notifyButtonPress(0);
-    LCD_setMessage("CAL: Set START");
+    LCD_setMessage("CAL: Set OUT");
     printf("Entering Arm Calibration Mode\n");
     return;
   }
 
-  // 5. Calibration mode logic
-  enum ArmCalibrationStep { CAL_OFF, CAL_SET_START, CAL_SET_CENTER };
-  static ArmCalibrationStep calStep = CAL_OFF;
-  static int32_t calD0 = 0;
-  
+  // 6. Calibration mode logic
   if (calStep != CAL_OFF) {
-    // Map encoder deltas to stepper jogging
-    int delta = currentPos - calD0;
+    // Map encoder deltas to stepper jogging (proportional speed)
+    int delta = currentPos - lastEncPos;
     if (delta != 0) {
-      calD0 = currentPos;
+      lastEncPos = currentPos;
       // Jog the arm directly based on encoder delta
       int jogSpeed = delta * 5000; 
       g_armNode.setSpeed(jogSpeed);
     } else {
-      g_armNode.setSpeed(0); // Stop when encoder stops turning
+      g_armNode.stop(); // Stop when encoder stops turning
     }
 
     if (btnPressed) {
       LCD_notifyButtonPress(0);
-      g_armNode.setSpeed(0); // Ensure stopped before saving
+      g_armNode.stop(); // Ensure stopped before saving
 
-      if (calStep == CAL_SET_START) {
-        g_armNode.setCalStart(1); // The node uses current physical position
-        calStep = CAL_SET_CENTER;
-        LCD_setMessage("CAL: Set CENTER");
-        printf("Arm CAL: Start saved, now set center\n");
+      if (calStep == CAL_SET_OUT) {
+        g_armNode.setPosOut();
+        calStep = CAL_SET_IN;
+        LCD_setMessage("CAL: Set IN");
+        printf("Arm CAL: Out saved, now set In\n");
 
-      } else if (calStep == CAL_SET_CENTER) {
-        g_armNode.setCalCenter(1);
+      } else if (calStep == CAL_SET_IN) {
+        g_armNode.setPosIn();
         calStep = CAL_OFF;
         LCD_setMessage("CAL: Saved!");
-        printf("Arm CAL: Center saved, calibration finished\n");
+        printf("Arm CAL: In saved, calibration finished\n");
         
-        // Reset encoder position to 0% (Start) for normal operation
+        // Reset encoder position to 0% (Out) for normal operation
         if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
           g_encoderState.position[0] = 0;
           xSemaphoreGive(encoderStateMutex);
@@ -185,68 +183,53 @@ static void handleArmEncoder() {
     return; // Skip normal mode processing while calibrating
   }
 
-  // Handle entering calibration mode from CAL_OFF
-  if (longPressed && calStep == CAL_OFF) {
-    calStep = CAL_SET_START;
-    calD0 = currentPos;
-    LCD_setMessage("CAL: Set START");
-    return;
-  }
-
-  // 6. Normal mode: encoder adjusts arm target percentage (0-100)
-  static int32_t d0 = 0;
+  // 7. Normal mode: encoder jog (move while turning, stop when done)
+  static int32_t lastNormalEncPos = 0;
   
-  // Constrain encoder to 0-100% in normal mode
-  if (currentPos < 0) currentPos = 0;
-  if (currentPos > 100) currentPos = 100;
-  if (currentPos != g_encoderState.position[0]) {
-    if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      g_encoderState.position[0] = currentPos;
-      xSemaphoreGive(encoderStateMutex);
-    }
+  int delta = currentPos - lastNormalEncPos;
+  if (delta != 0) {
+    lastNormalEncPos = currentPos;
+    // Proportional jog: turn faster → move faster
+    int jogSpeed = delta * 5000;
+    g_armNode.setSpeed(jogSpeed);
+  } else {
+    // Encoder stopped — halt the motor (but don't interfere with target tracking)
+    g_armNode.stop();
   }
 
-  if (d0 != currentPos) {
-    d0 = currentPos;
-    g_armNode.setTarget((float)d0);
-    printf("Arm Percent: %d\n", (int)d0);
-    LCD_setMessage("Arm Adjusted");
-  }
-
-  // 7. Short press: toggle between 0% (Start) and 100% (Center)
+  // 8. Short press: toggle between Out (0%) and In (100%)
   if (btnPressed) {
     LCD_notifyButtonPress(0);
 
-    if (calStart == -1 || calCenter == -1) {
+    if (posOut == -1 || posIn == -1) {
       LCD_setMessage("Not Calibrated");
       return;
     }
 
-    int newTargetPct = (d0 < 50) ? 100 : 0; // Toggle to opposite end
+    // Determine current approximate percentage
+    float range = (float)(posIn - posOut);
+    float pct = 50.0f; // Default if range is zero
+    if (abs(range) > 1.0f) {
+      pct = ((currentAbsPos - posOut) / range) * 100.0f;
+    }
 
-    // Interlock: Block movement to 0% (Start) if Z-axis is not at Top clearance
+    int newTargetPct = (pct < 50.0f) ? 100 : 0; // Toggle to opposite end
+
+    // Interlock: Block movement to 0% (Out) if Z-axis is not at Top clearance
     if (newTargetPct == 0) {
       MotorTelemetry motorTel;
       bool atTop = false;
       if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
-        // Wait, optical endstops! We can just check topEndstopTriggered!
         atTop = motorTel.topEndstopTriggered;
       }
       if (!atTop) {
         LCD_setMessage("Raise Z-Axis First!");
-        printf("Arm Interlock: Blocked move to Start because Z-axis is not at Top.\n");
+        printf("Arm Interlock: Blocked move to Out because Z-axis is not at Top.\n");
         return; // Abort
       }
     }
 
-    LCD_setMessage(newTargetPct == 100 ? "Arm: Center" : "Arm: Start");
-
-    if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      g_encoderState.position[0] = newTargetPct;
-      d0 = newTargetPct;
-      xSemaphoreGive(encoderStateMutex);
-    }
-    
+    LCD_setMessage(newTargetPct == 100 ? "Arm: In" : "Arm: Out");
     g_armNode.setTarget((float)newTargetPct);
   }
 }
@@ -258,7 +241,7 @@ static void handleActuatorEncoder() {
   bool doublePress = false;
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    g_encoderState.position[1] = constrain(g_encoderState.position[1], 0, 10);
+    g_encoderState.position[1] = constrain(g_encoderState.position[1], 0, 20);
     currentPos = g_encoderState.position[1];
 
     if (g_encoderState.buttonPressed[1]) {
@@ -294,8 +277,7 @@ static void handleActuatorEncoder() {
   if (d1 != currentPos) {
     d1 = currentPos;
     int targetPct = d1 * ACTUATOR_STEP_PERCENT;
-    ActSpeed s = (systemState.enc1MenuSelection == MENU_ACT_MAN_SLOW) ? ActSpeed::SLOW : ActSpeed::FAST;
-    g_actuatorNode.setTarget(targetPct, s);
+    g_actuatorNode.setTarget(targetPct);
   }
 
   // 2. Short Press: Cycle Menu and Execute GOTO
@@ -304,19 +286,19 @@ static void handleActuatorEncoder() {
     
     Enc1Menu sel = systemState.enc1MenuSelection;
     int newSel = (int)sel + 1;
-    if (newSel > 4) newSel = 0; // 5 menu items (0-4)
+    if (newSel > 3) newSel = 0; // 4 menu items (0-3): MAN, GOTO_TOP, GOTO_MID, GOTO_BOT
     systemState.enc1MenuSelection = (Enc1Menu)newSel;
     
     // Auto-GOTO if the limit is set
     if (newSel == MENU_ACT_GOTO_TOP && actLimitSet[2]) {
-      g_actuatorNode.setTarget(actLimits[2], ActSpeed::FAST);
-      d1 = actLimits[2] / ACTUATOR_STEP_PERCENT;
+      g_actuatorNode.setTarget(actLimits[2]);
+      d1 = (actLimits[2] + ACTUATOR_STEP_PERCENT/2) / ACTUATOR_STEP_PERCENT;
     } else if (newSel == MENU_ACT_GOTO_MID && actLimitSet[1]) {
-      g_actuatorNode.setTarget(actLimits[1], ActSpeed::FAST);
-      d1 = actLimits[1] / ACTUATOR_STEP_PERCENT;
+      g_actuatorNode.setTarget(actLimits[1]);
+      d1 = (actLimits[1] + ACTUATOR_STEP_PERCENT/2) / ACTUATOR_STEP_PERCENT;
     } else if (newSel == MENU_ACT_GOTO_BOT && actLimitSet[0]) {
-      g_actuatorNode.setTarget(actLimits[0], ActSpeed::FAST);
-      d1 = actLimits[0] / ACTUATOR_STEP_PERCENT;
+      g_actuatorNode.setTarget(actLimits[0]);
+      d1 = (actLimits[0] + ACTUATOR_STEP_PERCENT/2) / ACTUATOR_STEP_PERCENT;
     }
     
     // Update encoder position to match auto-goto
@@ -329,7 +311,7 @@ static void handleActuatorEncoder() {
   // 3. Long Press: Set Limit
   if (longPress) {
     Enc1Menu sel = systemState.enc1MenuSelection;
-    if (sel != MENU_ACT_MAN_FAST && sel != MENU_ACT_MAN_SLOW) {
+    if (sel != MENU_ACT_MAN) {
       int idx = 2; // Default GOTO_TOP
       if (sel == MENU_ACT_GOTO_MID) idx = 1;
       else if (sel == MENU_ACT_GOTO_BOT) idx = 0;
@@ -351,7 +333,7 @@ static void handleActuatorEncoder() {
   // 4. Double Press: Clear Limit
   if (doublePress) {
     Enc1Menu sel = systemState.enc1MenuSelection;
-    if (sel != MENU_ACT_MAN_FAST && sel != MENU_ACT_MAN_SLOW) {
+    if (sel != MENU_ACT_MAN) {
       int idx = 2;
       if (sel == MENU_ACT_GOTO_MID) idx = 1;
       else if (sel == MENU_ACT_GOTO_BOT) idx = 0;
@@ -459,10 +441,10 @@ static void handleAutonomousEncoder() {
 
   // Read arm telemetry for calibration check
   ArmTelemetry armTel;
-  int calStart = -1, calCenter = -1;
+  int posOut = -1, posIn = -1;
   if (xQueuePeek(armTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
-    calStart = armTel.calStart;
-    calCenter = armTel.calCenter;
+    posOut = armTel.posOut;
+    posIn = armTel.posIn;
   }
 
   // 1. Long Press: Motor Limits Setup
@@ -523,7 +505,7 @@ static void handleAutonomousEncoder() {
       bool canRun = false;
       if (sel == MENU_AUTO) {
         canRun = motorLimitSet[0] && motorLimitSet[1] && motorLimitSet[2] &&
-                 (calStart != -1) && (calCenter != -1);
+                 (posOut != -1) && (posIn != -1);
       } else {
         int idx = 2;
         if (sel == MENU_GOTO_MID) idx = 1;
@@ -566,12 +548,6 @@ static void handleAutonomousEncoder() {
 // Main Controller Task
 // ============================================================================
 
-// Forward declarations
-static void handleArmEncoder();
-static void handleActuatorEncoder();
-static void handleMotorEncoder();
-static void handleAutonomousEncoder();
-
 void controller_task(void *pvParameters) {
   // Sync static handler variables on boot
   if (xSemaphoreTake(encoderStateMutex, portMAX_DELAY) == pdTRUE) {
@@ -602,13 +578,13 @@ void autonomous_task(void *pvParameters) {
   // Define the autonomous sequence steps
   const SequenceStep sequence[] = {
       {SEQ_MOVE_Z, 0, Z_CLEARANCE_POS, "Auto: Raise Z"},
-      {SEQ_MOVE_ARM, 0, 0, "Auto: Arm Start"},
+      {SEQ_MOVE_ARM, 0, 0, "Auto: Arm Out"},
       {SEQ_WAIT_MS, 500, 0, "Wait 500ms"},
       {SEQ_MOVE_Z, 0, Z_TUBE_POS, "Auto: Lower Z"},
-      {SEQ_MOVE_ARM, 100, 0, "Auto: Arm Center"},
+      {SEQ_MOVE_ARM, 100, 0, "Auto: Arm In"},
       {SEQ_WAIT_MS, 500, 0, "Wait 500ms"},
       {SEQ_MOVE_Z, 0, Z_CLEARANCE_POS, "Auto: Raise Z"},
-      {SEQ_MOVE_ARM, 0, 0, "Auto: Arm Start"},
+      {SEQ_MOVE_ARM, 0, 0, "Auto: Arm Out"},
       {SEQ_WAIT_MS, 500, 0, "Wait 500ms"},
       {SEQ_MOVE_ACTUATOR, 100, 0, "Auto: Actuator Extend"},
       {SEQ_WAIT_MS, 1500, 0, "Wait 1.5s"},
@@ -693,10 +669,10 @@ void autonomous_task(void *pvParameters) {
       case SEQ_MOVE_ARM: {
         ArmTelemetry armTel;
         if (xQueuePeek(armTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
-          int startSteps = armTel.calStart;
-          int centerSteps = armTel.calCenter;
-          if (startSteps != -1 && centerSteps != -1) {
-            float targetAbs = startSteps + (step.target / 100.0f) * (centerSteps - startSteps);
+          int outSteps = armTel.posOut;
+          int inSteps = armTel.posIn;
+          if (outSteps != -1 && inSteps != -1) {
+            float targetAbs = outSteps + (step.target / 100.0f) * (inSteps - outSteps);
             if (abs(armTel.currentPosition - targetAbs) < 10.0f) {
               stepComplete = true; // Reached target steps
             } else {
@@ -711,12 +687,6 @@ void autonomous_task(void *pvParameters) {
       }
 
       case SEQ_MOVE_ACTUATOR: {
-        ActuatorTelemetry actTel;
-        int actuatorTargetPercent = 0;
-        if (xQueuePeek(actuatorTelQueue, &actTel, pdMS_TO_TICKS(10)) == pdPASS) {
-          actuatorTargetPercent = actTel.limits[step.target]; // Use target for limits index! Wait, the ActuatorNode used value as percent. Wait, ActuatorCommand uses value as target percent!
-          // But wait, the autonomous task sent 0 or 100 for step.target. So let's just use step.target.
-        }
         g_actuatorNode.setTarget(step.target);
 
         // UI Back-Sync: update encoder 1 so manual controls stay in sync
@@ -725,7 +695,6 @@ void autonomous_task(void *pvParameters) {
           xSemaphoreGive(encoderStateMutex);
         }
         
-        // Let's assume the actuator is fast and doesn't block. 
         stepComplete = true;
         break;
       }

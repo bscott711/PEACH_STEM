@@ -13,7 +13,7 @@
 #define SERVO_MIN_PERCENT 0
 #define SERVO_CENTER_PERCENT 50
 #define SERVO_MAX_PERCENT 100
-#define ACTUATOR_STEP_PERCENT 10
+#define ACTUATOR_STEP_PERCENT 5
 
 // Z-axis position targets (in currentPosition units)
 // Derived from speed=120000, time=15s, factor=1.372e-6 ≈ 2.47
@@ -28,8 +28,7 @@
 
 enum DeviceMode { IDLE, PICKUP_CELL, DROPOFF_CELL };
 enum ActuatorDirection { ACT_STOP = 0, ACT_FORWARD, ACT_REVERSE };
-enum ServoCalibrationStep { CAL_OFF, CAL_SET_START, CAL_SET_CENTER };
-enum Enc1Menu { MENU_ACT_MAN_FAST, MENU_ACT_MAN_SLOW, MENU_ACT_GOTO_TOP, MENU_ACT_GOTO_MID, MENU_ACT_GOTO_BOT };
+enum Enc1Menu { MENU_ACT_MAN, MENU_ACT_GOTO_TOP, MENU_ACT_GOTO_MID, MENU_ACT_GOTO_BOT };
 enum Enc3Menu { MENU_AUTO, MENU_GOTO_TOP, MENU_GOTO_MID, MENU_GOTO_BOT };
 
 
@@ -54,7 +53,7 @@ struct SystemState {
   DeviceMode mode;
   
   // Controller state only (subsystem state moved to Active Nodes)
-  Enc1Menu enc1MenuSelection;
+  Enc1Menu enc1MenuSelection;  // MENU_ACT_MAN, GOTO_TOP, GOTO_MID, GOTO_BOT
   Enc3Menu enc3MenuSelection;
   
   // Collision Detection (shared flag)
@@ -87,7 +86,6 @@ void initSystemState();
 void saveMotorState();
 void saveMotorLimits();
 void saveActuatorLimits();
-void saveArmCalibration();
 
 // FreeRTOS task entries
 void controller_task(void *pvParameters);
