@@ -133,6 +133,8 @@ static float clamp(float val, float min, float max) {
   return val;
 }
 
+static int fallingPeachPathIndex = -1;
+
 // Recursive function to draw the tree dynamically
 static void drawBranch(int progress, float x, float y, float len, float angle, int depth, int pathIndex) {
   const int maxDepth = 4; // Max depth 4 for 128x64 screen performance
@@ -171,15 +173,15 @@ static void drawBranch(int progress, float x, float y, float len, float angle, i
       drawBranch(progress, endX, endY, len * rightLenMod, angle + rightAngleMod, depth + 1, pathIndex * 2 + 1);
 
       // Occasionally spawn a middle branch for organic density
-      // Reduced probability of middle branch (fewer branches)
-      if (hash_fn(pathIndex, 5) > 0.9f) { 
+      // Increased probability of middle branch for a fuller tree
+      if (hash_fn(pathIndex, 5) > 0.5f) { 
          drawBranch(progress, endX, endY, len * 0.5f, angle + (hash_fn(pathIndex, 6) * 0.2f - 0.1f), depth + 1, pathIndex * 2 + 2);
       }
     }
 
     // --- STAGE 3: The Leaves (50% - 80%) ---
-    // Reduced leaf density (only 25% chance of leaf)
-    if (depth >= 2 && hash_fn(pathIndex, 11) > 0.75f) {
+    // Increased leaf density for a fuller look (70% chance of leaf)
+    if (depth >= 2 && hash_fn(pathIndex, 11) > 0.3f) {
       float leafStart = 50 + hash_fn(pathIndex, 7) * 15;
       float leafEnd = leafStart + 15;
       
@@ -196,16 +198,19 @@ static void drawBranch(int progress, float x, float y, float len, float angle, i
 
     // --- STAGE 4: The Peaches (80% - 100%) ---
     if (depth == maxDepth && progress > 80) {
-      // Only spawn peaches on certain branches (much lower probability)
-      if (hash_fn(pathIndex, 9) > 0.75f) {
+      // Only spawn peaches on certain branches (around 3-4 total)
+      if (hash_fn(pathIndex, 9) > 0.85f) {
         float peachGrowth = clamp((progress - 80.0f) / 10.0f, 0.0f, 1.0f); // Grow faster (80-90)
         
         float pY = endY;
         
+        // Pick the first peach that is far enough from the center to be the falling peach
+        if (fallingPeachPathIndex == -1 && abs((int)endX - 64) > 12) {
+            fallingPeachPathIndex = pathIndex;
+        }
+        
         // Peach falling animation (90% - 100%)
-        // Make this specific peach fall if it matches a hash condition, 
-        // AND ensure it is far enough from the trunk (startX = 64) so it doesn't get hidden
-        if (progress > 90 && hash_fn(pathIndex, 10) > 0.6f && abs((int)endX - 64) > 12) {
+        if (progress > 90 && pathIndex == fallingPeachPathIndex) {
              float fallProgress = clamp((progress - 90.0f) / 10.0f, 0.0f, 1.0f);
              // Quadratic fall: distance = 1/2 * g * t^2
              pY += (62.0f - endY) * fallProgress * fallProgress; 
@@ -233,6 +238,9 @@ void draw_otaScreen() {
 
   int otaProgress = NetworkManager::getOTAProgress();
   const char* otaStatus = NetworkManager::getOTAStatus();
+
+  // Reset falling peach tracker for this frame
+  fallingPeachPathIndex = -1;
 
   // Draw the growing tree!
   int startX = 64; // Center
