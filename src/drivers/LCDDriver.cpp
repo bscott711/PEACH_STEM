@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <esp_log.h>
+#include "core/NetworkManager.h"
 
 /**
  * Mutex Lock Order Protocol (ALWAYS acquire in this order to prevent deadlock):
@@ -130,21 +131,23 @@ void draw_otaScreen() {
 
   // Status message
   u8g2.setFont(u8g2_font_tiny5_tf);
-  int statusWidth = strlen(g_otaStatus) * 4;
-  u8g2.drawStr((128 - statusWidth) / 2, 26, g_otaStatus);
+  const char* otaStatus = NetworkManager::getOTAStatus();
+  int statusWidth = strlen(otaStatus) * 4;
+  u8g2.drawStr((128 - statusWidth) / 2, 26, otaStatus);
 
   // Progress Bar Frame
   u8g2.drawFrame(10, 32, 108, 12);
   
   // Progress Bar Fill
-  int fillWidth = map(constrain(g_otaProgress, 0, 100), 0, 100, 0, 106);
+  int otaProgress = NetworkManager::getOTAProgress();
+  int fillWidth = map(constrain(otaProgress, 0, 100), 0, 100, 0, 106);
   if (fillWidth > 0) {
     u8g2.drawBox(11, 33, fillWidth, 10);
   }
 
   // Progress text (centered at bottom)
   char progressStr[32];
-  snprintf(progressStr, sizeof(progressStr), "%d%% completed", g_otaProgress);
+  snprintf(progressStr, sizeof(progressStr), "%d%% completed", otaProgress);
   int textWidth = strlen(progressStr) * 4;
   u8g2.drawStr((128 - textWidth) / 2, 56, progressStr);
 

@@ -17,3 +17,5 @@ void LCD_notifyButtonPress(int index);
 
 void LCDInit();
 void draw_menu(const UIData& data);
+void draw_otaScreen();
+void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool failed);
