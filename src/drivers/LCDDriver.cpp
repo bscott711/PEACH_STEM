@@ -244,6 +244,7 @@ void draw_otaScreen() {
 void LCDInit() {
   u8g2.begin();
   u8g2.setBusClock(4000000); // Lower SPI speed to 4MHz to prevent screen tearing
+  u8g2.sendF("ca", 0xd5, 0xf0); // Maximize internal oscillator freq to fix camera flicker
   u8g2.setFont(u8g2_font_tiny5_tf);
 
   lcdMutex = xSemaphoreCreateMutex();
