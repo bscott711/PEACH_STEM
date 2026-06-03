@@ -27,4 +27,13 @@ struct UIData {
     S4Level0 s4Menu;
     int s4SubMenu;
     bool s4InSubMenu;
+    bool s4InSpeedEdit;
+
+    // Configurable Speeds
+    int armJogSpeed;
+    int armGoSpeed;
+    int actJogSpeed;
+    int actGoSpeed;
+    int zJogSpeed;
+    int zGoSpeed;
 };

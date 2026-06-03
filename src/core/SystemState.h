@@ -9,17 +9,22 @@ enum ActuatorDirection { ACT_STOP = 0, ACT_FORWARD, ACT_REVERSE };
 enum S4Level0 { S4_ARM, S4_ACT, S4_Z, S4_AUTO, S4_LEVEL0_COUNT };
 
 // Sub-menu indices for Arm
-#define S4_ARM_TIP   0
-#define S4_ARM_CLEAR 1
-#define S4_ARM_BACK  2
-#define S4_ARM_COUNT 3
+#define S4_ARM_TIP     0
+#define S4_ARM_CLEAR   1
+#define S4_ARM_JOG_SPD 2
+#define S4_ARM_GO_SPD  3
+#define S4_ARM_BACK    4
+#define S4_ARM_COUNT   5
 
 // Sub-menu indices for Actuator & Z (same layout)
-#define S4_POS_TOP   0
-#define S4_POS_MID   1
-#define S4_POS_BOT   2
-#define S4_POS_BACK  3
-#define S4_POS_COUNT 4
+#define S4_POS_TOP     0
+#define S4_POS_MID     1
+#define S4_POS_BOT     2
+#define S4_POS_JOG_SPD 3
+#define S4_POS_GO_SPD  4
+#define S4_POS_BACK    5
+#define S4_POS_COUNT   6
+
 
 
 
@@ -46,15 +51,19 @@ struct SystemState {
   
   // S4 Menu state
   S4Level0 s4Menu;
-  int s4SubMenu;
+  uint8_t s4SubMenu;
   bool s4InSubMenu;
-  
+  bool s4InSpeedEdit;
 
+  // Configurable Speeds
+  int armJogSpeed;
+  int armGoSpeed;
+  int actJogSpeed; // PWM 0-255
+  int actGoSpeed;  // PWM 0-255
+  int zJogSpeed;
+  int zGoSpeed;
   
   // Collision Detection (shared flag)
   bool collisionDetected;
   uint32_t collisionTimestamp;
-  
-  // UI-configurable global actuator slow speed
-  uint8_t actuatorSlowSpeed;
 };

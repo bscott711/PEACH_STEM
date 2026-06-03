@@ -35,9 +35,15 @@ SystemState systemState = {.mode = IDLE,
                            .s4Menu = S4_ARM,
                            .s4SubMenu = 0,
                            .s4InSubMenu = false,
+                           .s4InSpeedEdit = false,
+                           .armJogSpeed = 5000,
+                           .armGoSpeed = 5000,
+                           .actJogSpeed = 128,
+                           .actGoSpeed = 128,
+                           .zJogSpeed = 5000,
+                           .zGoSpeed = 5000,
                            .collisionDetected = false,
-                           .collisionTimestamp = 0,
-                           .actuatorSlowSpeed = 128};
+                           .collisionTimestamp = 0};
 
 void initSystemState() {
   systemStateMutex = xSemaphoreCreateMutex();
@@ -52,8 +58,17 @@ void initSystemState() {
     systemState.s4Menu = S4_ARM;
     systemState.s4SubMenu = 0;
     systemState.s4InSubMenu = false;
+    systemState.s4InSpeedEdit = false;
+    
+    // Load speeds from NVS with defaults
+    systemState.armJogSpeed = StorageManager::loadArmJogSpeed(5000);
+    systemState.armGoSpeed = StorageManager::loadArmGoSpeed(5000);
+    systemState.actJogSpeed = StorageManager::loadActuatorJogSpeed(128);
+    systemState.actGoSpeed = StorageManager::loadActuatorGoSpeed(128);
+    systemState.zJogSpeed = StorageManager::loadZJogSpeed(5000);
+    systemState.zGoSpeed = StorageManager::loadZGoSpeed(5000);
+    
     systemState.collisionDetected = false;
-    systemState.actuatorSlowSpeed = 128;
     xSemaphoreGive(systemStateMutex);
   }
 }

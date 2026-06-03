@@ -22,10 +22,7 @@ static int g_jogDirArm = 0;       // -1, 0, +1
 static int g_jogDirActuator = 0;
 static int g_jogDirMotor = 0;
 
-// Default jog speeds per axis
-static const int JOG_SPEED_ARM = 5000;     // steps/s for arm stepper
-static const int JOG_SPEED_Z = 4995;       // steps/s for Z stepper
-static const int JOG_PWM_ACTUATOR = 255;   // PWM duty for actuator H-bridge
+// Configurable speeds are stored in systemState
 
 void InputManager::init() {
   if (xSemaphoreTake(encoderStateMutex, portMAX_DELAY) == pdTRUE) {
@@ -68,6 +65,14 @@ void InputManager::populateUIData(UIData& data) {
         data.s4Menu = systemState.s4Menu;
         data.s4SubMenu = systemState.s4SubMenu;
         data.s4InSubMenu = systemState.s4InSubMenu;
+        data.s4InSpeedEdit = systemState.s4InSpeedEdit;
+        
+        data.armJogSpeed = systemState.armJogSpeed;
+        data.armGoSpeed = systemState.armGoSpeed;
+        data.actJogSpeed = systemState.actJogSpeed;
+        data.actGoSpeed = systemState.actGoSpeed;
+        data.zJogSpeed = systemState.zJogSpeed;
+        data.zGoSpeed = systemState.zGoSpeed;
         xSemaphoreGive(systemStateMutex);
     }
     
@@ -131,12 +136,19 @@ void InputManager::handleArmEncoder() {
   }
 
   // Encoder turn: set jog direction
-  if (delta > 0) {
-    g_jogDirArm = 1;
-    g_armNode.setSpeed(JOG_SPEED_ARM);
-  } else if (delta < 0) {
-    g_jogDirArm = -1;
-    g_armNode.setSpeed(-JOG_SPEED_ARM);
+  if (delta != 0) {
+    int speed = 5000;
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      speed = systemState.armJogSpeed;
+      xSemaphoreGive(systemStateMutex);
+    }
+    if (delta > 0) {
+      g_jogDirArm = 1;
+      g_armNode.setSpeed(speed);
+    } else {
+      g_jogDirArm = -1;
+      g_armNode.setSpeed(-speed);
+    }
   }
 
   // Short press: stop motor
@@ -178,19 +190,26 @@ void InputManager::handleActuatorEncoder() {
   }
 
   // Encoder turn: jog actuator
-  if (delta > 0) {
-    g_jogDirActuator = 1;
-    g_actuatorNode.setTarget(100, JOG_PWM_ACTUATOR); // Extend toward 100%
-  } else if (delta < 0) {
-    g_jogDirActuator = -1;
-    g_actuatorNode.setTarget(0, JOG_PWM_ACTUATOR); // Retract toward 0%
+  if (delta != 0) {
+    int speed = 128;
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      speed = systemState.actJogSpeed;
+      xSemaphoreGive(systemStateMutex);
+    }
+    if (delta > 0) {
+      g_jogDirActuator = 1;
+      g_actuatorNode.setTarget(100, speed); // Extend toward 100%
+    } else {
+      g_jogDirActuator = -1;
+      g_actuatorNode.setTarget(0, speed); // Retract toward 0%
+    }
   }
 
   // Short press: stop actuator at current position
   if (btnPressed) {
     LCD_notifyButtonPress(1);
     g_jogDirActuator = 0;
-    g_actuatorNode.setTarget(currentPct, JOG_PWM_ACTUATOR);
+    g_actuatorNode.setTarget(currentPct, 255);
     LCD_setMessage("Act: Stopped");
   }
 }
@@ -215,12 +234,19 @@ void InputManager::handleMotorEncoder() {
   }
 
   // Encoder turn: set jog direction
-  if (delta > 0) {
-    g_jogDirMotor = 1;
-    g_motorNode.setSpeed(JOG_SPEED_Z);
-  } else if (delta < 0) {
-    g_jogDirMotor = -1;
-    g_motorNode.setSpeed(-JOG_SPEED_Z);
+  if (delta != 0) {
+    int speed = 5000;
+    if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      speed = systemState.zJogSpeed;
+      xSemaphoreGive(systemStateMutex);
+    }
+    if (delta > 0) {
+      g_jogDirMotor = 1;
+      g_motorNode.setSpeed(speed);
+    } else {
+      g_jogDirMotor = -1;
+      g_motorNode.setSpeed(-speed);
+    }
   }
 
   // Short press: stop motor
@@ -373,16 +399,51 @@ void InputManager::handleMenuEncoder() {
   // ===========================
   int itemCount = getSubMenuCount(systemState.s4Menu);
 
-  // Encoder turn: cycle through sub-menu items
-  if (delta != 0) {
-    int sel = systemState.s4SubMenu + delta;
-    while (sel < 0) sel += itemCount;
-    sel = sel % itemCount;
-    systemState.s4SubMenu = sel;
-  }
-
   S4Level0 axis = systemState.s4Menu;
   int item = systemState.s4SubMenu;
+
+  // Encoder turn: adjust speed OR cycle through sub-menu items
+  if (delta != 0) {
+    if (systemState.s4InSpeedEdit) {
+      if (axis == S4_ARM) {
+        if (item == S4_ARM_JOG_SPD) {
+          systemState.armJogSpeed += delta * 100;
+          if (systemState.armJogSpeed < 100) systemState.armJogSpeed = 100;
+          if (systemState.armJogSpeed > 5000) systemState.armJogSpeed = 5000;
+        } else if (item == S4_ARM_GO_SPD) {
+          systemState.armGoSpeed += delta * 100;
+          if (systemState.armGoSpeed < 100) systemState.armGoSpeed = 100;
+          if (systemState.armGoSpeed > 5000) systemState.armGoSpeed = 5000;
+        }
+      } else if (axis == S4_ACT) {
+        if (item == S4_POS_JOG_SPD) {
+          systemState.actJogSpeed += delta * 10;
+          if (systemState.actJogSpeed < 10) systemState.actJogSpeed = 10;
+          if (systemState.actJogSpeed > 255) systemState.actJogSpeed = 255;
+        } else if (item == S4_POS_GO_SPD) {
+          systemState.actGoSpeed += delta * 10;
+          if (systemState.actGoSpeed < 10) systemState.actGoSpeed = 10;
+          if (systemState.actGoSpeed > 255) systemState.actGoSpeed = 255;
+        }
+      } else if (axis == S4_Z) {
+        if (item == S4_POS_JOG_SPD) {
+          systemState.zJogSpeed += delta * 100;
+          if (systemState.zJogSpeed < 100) systemState.zJogSpeed = 100;
+          if (systemState.zJogSpeed > 5000) systemState.zJogSpeed = 5000;
+        } else if (item == S4_POS_GO_SPD) {
+          systemState.zGoSpeed += delta * 100;
+          if (systemState.zGoSpeed < 100) systemState.zGoSpeed = 100;
+          if (systemState.zGoSpeed > 5000) systemState.zGoSpeed = 5000;
+        }
+      }
+    } else {
+      int sel = systemState.s4SubMenu + delta;
+      while (sel < 0) sel += itemCount;
+      sel = sel % itemCount;
+      systemState.s4SubMenu = sel;
+      item = sel; // Update local item
+    }
+  }
 
   // --- Check for "Back" item ---
   bool isBack = false;
@@ -404,6 +465,33 @@ void InputManager::handleMenuEncoder() {
       return;
     }
 
+    // Check if we are interacting with a Speed menu item
+    bool isSpeedItem = false;
+    if (axis == S4_ARM && (item == S4_ARM_JOG_SPD || item == S4_ARM_GO_SPD)) isSpeedItem = true;
+    if ((axis == S4_ACT || axis == S4_Z) && (item == S4_POS_JOG_SPD || item == S4_POS_GO_SPD)) isSpeedItem = true;
+
+    if (isSpeedItem) {
+      if (systemState.s4InSpeedEdit) {
+        // Exit edit mode and save
+        systemState.s4InSpeedEdit = false;
+        if (axis == S4_ARM) {
+          StorageManager::saveArmJogSpeed(systemState.armJogSpeed);
+          StorageManager::saveArmGoSpeed(systemState.armGoSpeed);
+        } else if (axis == S4_ACT) {
+          StorageManager::saveActuatorJogSpeed(systemState.actJogSpeed);
+          StorageManager::saveActuatorGoSpeed(systemState.actGoSpeed);
+        } else if (axis == S4_Z) {
+          StorageManager::saveZJogSpeed(systemState.zJogSpeed);
+          StorageManager::saveZGoSpeed(systemState.zGoSpeed);
+        }
+        LCD_setMessage("Speed Saved");
+      } else {
+        // Enter edit mode
+        systemState.s4InSpeedEdit = true;
+      }
+      return;
+    }
+
     // GOTO action based on axis and item
     if (axis == S4_ARM) {
       if (armPosOut == -1 || armPosIn == -1) {
@@ -411,10 +499,10 @@ void InputManager::handleMenuEncoder() {
         return;
       }
       if (item == S4_ARM_TIP) {
-        g_armNode.setTarget(100.0f);
+        g_armNode.setTarget(100.0f, systemState.armGoSpeed);
         LCD_setMessage("Arm: Go Tip");
       } else if (item == S4_ARM_CLEAR) {
-        g_armNode.setTarget(0.0f);
+        g_armNode.setTarget(0.0f, systemState.armGoSpeed);
         LCD_setMessage("Arm: Go Clear");
       }
     } else if (axis == S4_ACT) {
@@ -423,7 +511,7 @@ void InputManager::handleMenuEncoder() {
         LCD_setMessage("Act: Not Set");
         return;
       }
-      g_actuatorNode.setTarget(actLimits[limitIdx]);
+      g_actuatorNode.setTarget(actLimits[limitIdx], systemState.actGoSpeed);
       LCD_setMessage("Act: GOTO");
     } else if (axis == S4_Z) {
       int limitIdx = (item == S4_POS_TOP) ? 2 : ((item == S4_POS_BOT) ? 0 : 1);

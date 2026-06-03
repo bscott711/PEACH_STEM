@@ -22,8 +22,9 @@ private:
     int posOut;              // Calibrated "Out" position in steps (-1 = unset)
     int posIn;               // Calibrated "In" position in steps (-1 = unset)
     
-    bool isTrackingTarget;   // True when P-controller is driving to a target
+    bool isTrackingTarget;   // True when driving to a target
     float targetTrackingAbsSteps;
+    int targetTrackingSpeed; // The speed to use while tracking
     
     float lastSavedPosition; // Last position written to NVS (to debounce saves)
     
@@ -40,7 +41,7 @@ public:
     bool setSpeed(int speed);
     bool stop();
     bool jog(float relativeSteps);
-    bool setTarget(float percent);
+    bool setTarget(float percent, int targetSpeed = 5000);
     bool setPosOut();
     bool setPosIn();
     bool clearCal();

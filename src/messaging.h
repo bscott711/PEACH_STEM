@@ -21,6 +21,7 @@ enum class ArmCmdAction {
 struct ArmCommand {
     ArmCmdAction action;
     float value;     // Target percent or speed
+    int targetSpeed; // Speed for GOTO tracking
 };
 
 struct ArmTelemetry {

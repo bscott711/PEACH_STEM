@@ -12,8 +12,10 @@ public:
     static void loadActuatorLimits(int limits[3], bool limitSet[3]);
     static void saveActuatorPosition(float pos);
     static float loadActuatorPosition();
-    static void saveActuatorSlowSpeed(uint8_t speed);
-    static uint8_t loadActuatorSlowSpeed();
+    static void saveActuatorJogSpeed(int speed);
+    static int loadActuatorJogSpeed(int defaultSpeed);
+    static void saveActuatorGoSpeed(int speed);
+    static int loadActuatorGoSpeed(int defaultSpeed);
 
     // --- Motor ---
     static void saveMotorLimitBot(float limit, bool isSet);
@@ -22,6 +24,10 @@ public:
     static void loadMotorLimits(float limits[3], bool limitSet[3]);
     static void saveMotorState(bool isHomed, float pos);
     static void loadMotorState(bool &isHomed, float &pos);
+    static void saveZJogSpeed(int speed);
+    static int loadZJogSpeed(int defaultSpeed);
+    static void saveZGoSpeed(int speed);
+    static int loadZGoSpeed(int defaultSpeed);
 
     // --- Arm ---
     static void saveArmPosOut(int pos);
@@ -29,4 +35,8 @@ public:
     static void loadArmCalibration(int &posOut, int &posIn);
     static void saveArmPosition(float pos);
     static float loadArmPosition();
+    static void saveArmJogSpeed(int speed);
+    static int loadArmJogSpeed(int defaultSpeed);
+    static void saveArmGoSpeed(int speed);
+    static int loadArmGoSpeed(int defaultSpeed);
 };

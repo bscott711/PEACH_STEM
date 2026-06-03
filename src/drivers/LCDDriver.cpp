@@ -337,8 +337,8 @@ static void draw_buttonStatus(const UIData& data) {
 }
 
 static const char* s4Level0Names[] = {"Arm", "Act", "Z", "Auto"};
-static const char* s4ArmSubNames[] = {"Tip", "Clr", "Back"};
-static const char* s4PosSubNames[] = {"Top", "Mid", "Bot", "Back"};
+static const char* s4ArmSubNames[] = {"Tip", "Clr", "JogSpd", "GoSpd", "Back"};
+static const char* s4PosSubNames[] = {"Top", "Mid", "Bot", "JogSpd", "GoSpd", "Back"};
 
 static void draw_encoderStatus(const UIData& data) {
   char statusBuffer[32];
@@ -454,12 +454,20 @@ static void draw_encoderStatus(const UIData& data) {
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Clr:%d", axisName, data.armPosOut);
           else
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Clr:--", axisName);
+        } else if (data.s4SubMenu == S4_ARM_JOG_SPD) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.armJogSpeed, data.s4InSpeedEdit ? "*" : "");
+        } else if (data.s4SubMenu == S4_ARM_GO_SPD) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.armGoSpeed, data.s4InSpeedEdit ? "*" : "");
         }
       } else if (data.s4Menu == S4_ACT) {
         int idx = data.s4SubMenu;
         itemName = s4PosSubNames[idx];
         if (idx == S4_POS_BACK) {
           snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Back", axisName);
+        } else if (idx == S4_POS_JOG_SPD) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.actJogSpeed, data.s4InSpeedEdit ? "*" : "");
+        } else if (idx == S4_POS_GO_SPD) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.actGoSpeed, data.s4InSpeedEdit ? "*" : "");
         } else {
           int limitIdx = (idx == S4_POS_TOP) ? 2 : ((idx == S4_POS_BOT) ? 0 : 1);
           if (data.actuatorLimitSet[limitIdx]) {
@@ -473,6 +481,10 @@ static void draw_encoderStatus(const UIData& data) {
         itemName = s4PosSubNames[idx];
         if (idx == S4_POS_BACK) {
           snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Back", axisName);
+        } else if (idx == S4_POS_JOG_SPD) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.zJogSpeed, data.s4InSpeedEdit ? "*" : "");
+        } else if (idx == S4_POS_GO_SPD) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.zGoSpeed, data.s4InSpeedEdit ? "*" : "");
         } else {
           int limitIdx = (idx == S4_POS_TOP) ? 2 : ((idx == S4_POS_BOT) ? 0 : 1);
           if (data.motorLimitSet[limitIdx]) {

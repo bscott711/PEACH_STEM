@@ -53,8 +53,9 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
         case ArmCmdAction::SET_TARGET:
             if (posOut != -1 && posIn != -1) {
                 targetTrackingAbsSteps = posOut + (cmd.value / 100.0f) * (posIn - posOut);
+                targetTrackingSpeed = cmd.targetSpeed;
                 isTrackingTarget = true;
-                ESP_LOGI(TAG, "Arm tracking target: %.2f%% -> %.2f steps", cmd.value, targetTrackingAbsSteps);
+                ESP_LOGI(TAG, "Arm tracking target: %.2f%% -> %.2f steps at speed %d", cmd.value, targetTrackingAbsSteps, targetTrackingSpeed);
             } else {
                 ESP_LOGW(TAG, "Arm SET_TARGET ignored: Uncalibrated!");
             }
@@ -94,22 +95,20 @@ void ArmNode::hwUpdate() {
     if (isTrackingTarget) {
         float error = targetTrackingAbsSteps - currentPosition;
         
-        // P-Controller with proportional gain
-        int pControlSpeed = (int)(error * 10.0f);
-        int maxTrackingSpeed = 20000;
-        
-        targetSpeed = constrain(pControlSpeed, -maxTrackingSpeed, maxTrackingSpeed);
-        
-        // Deadband — close enough to target, stop tracking
+        // Constant velocity tracking
         if (abs(error) < 5.0f) {
             targetSpeed = 0;
             isTrackingTarget = false;
+        } else {
+            targetSpeed = (error > 0) ? targetTrackingSpeed : -targetTrackingSpeed;
         }
     }
 
     // Velocity control and position integration
     if (targetSpeed != 0) {
-        float deltaPos = (1.372e-6f * (float)targetSpeed * (float)TASK_UPDATE_INTERVAL_MS);
+        // VACTUAL to steps/sec factor is ~0.715
+        float stepsPerSec = (float)targetSpeed * 0.715f;
+        float deltaPos = stepsPerSec * ((float)TASK_UPDATE_INTERVAL_MS / 1000.0f);
         currentPosition += deltaPos;
     }
     
@@ -154,10 +153,11 @@ bool ArmNode::jog(float relativeSteps) {
     return sendCommand(cmd);
 }
 
-bool ArmNode::setTarget(float percent) {
+bool ArmNode::setTarget(float percent, int targetSpeed) {
     ArmCommand cmd;
     cmd.action = ArmCmdAction::SET_TARGET;
     cmd.value = percent;
+    cmd.targetSpeed = targetSpeed;
     return sendCommand(cmd);
 }
 

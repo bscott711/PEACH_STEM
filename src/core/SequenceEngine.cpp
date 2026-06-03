@@ -18,7 +18,7 @@ extern MotorNode g_motorNode;
 void autonomous_task(void *pvParameters) {
   uint8_t slowSpeed = 128;
   if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      slowSpeed = systemState.actuatorSlowSpeed;
+      slowSpeed = systemState.actGoSpeed;
       xSemaphoreGive(systemStateMutex);
   }
 
@@ -251,7 +251,13 @@ void motor_goto_task(void *pvParameters) {
     currentPos = motorTel.currentPosition;
   }
 
-  int velocity = (targetZ > currentPos) ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
+  int autoSpeed = 5000;
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    autoSpeed = systemState.zGoSpeed;
+    xSemaphoreGive(systemStateMutex);
+  }
+
+  int velocity = (targetZ > currentPos) ? autoSpeed : -autoSpeed;
   bool goingUp = (velocity > 0);
 
   g_motorNode.setSpeed(velocity);

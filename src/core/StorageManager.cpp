@@ -65,17 +65,35 @@ float StorageManager::loadActuatorPosition() {
     return pos;
 }
 
-void StorageManager::saveActuatorSlowSpeed(uint8_t speed) {
+
+
+void StorageManager::saveActuatorJogSpeed(int speed) {
     if (prefs.begin("peach", false)) {
-        prefs.putUChar("actSlowSpd", speed);
+        prefs.putInt("actJogSpd", speed);
         prefs.end();
     }
 }
 
-uint8_t StorageManager::loadActuatorSlowSpeed() {
-    uint8_t speed = 128; // Default 50% PWM
+int StorageManager::loadActuatorJogSpeed(int defaultSpeed) {
+    int speed = defaultSpeed;
     if (prefs.begin("peach", false)) {
-        speed = prefs.getUChar("actSlowSpd", 128);
+        speed = prefs.getInt("actJogSpd", defaultSpeed);
+        prefs.end();
+    }
+    return speed;
+}
+
+void StorageManager::saveActuatorGoSpeed(int speed) {
+    if (prefs.begin("peach", false)) {
+        prefs.putInt("actGoSpd", speed);
+        prefs.end();
+    }
+}
+
+int StorageManager::loadActuatorGoSpeed(int defaultSpeed) {
+    int speed = defaultSpeed;
+    if (prefs.begin("peach", false)) {
+        speed = prefs.getInt("actGoSpd", defaultSpeed);
         prefs.end();
     }
     return speed;
@@ -134,6 +152,38 @@ void StorageManager::loadMotorState(bool &isHomed, float &pos) {
     }
 }
 
+void StorageManager::saveZJogSpeed(int speed) {
+    if (prefs.begin("peach", false)) {
+        prefs.putInt("zJogSpd", speed);
+        prefs.end();
+    }
+}
+
+int StorageManager::loadZJogSpeed(int defaultSpeed) {
+    int speed = defaultSpeed;
+    if (prefs.begin("peach", false)) {
+        speed = prefs.getInt("zJogSpd", defaultSpeed);
+        prefs.end();
+    }
+    return speed;
+}
+
+void StorageManager::saveZGoSpeed(int speed) {
+    if (prefs.begin("peach", false)) {
+        prefs.putInt("zGoSpd", speed);
+        prefs.end();
+    }
+}
+
+int StorageManager::loadZGoSpeed(int defaultSpeed) {
+    int speed = defaultSpeed;
+    if (prefs.begin("peach", false)) {
+        speed = prefs.getInt("zGoSpd", defaultSpeed);
+        prefs.end();
+    }
+    return speed;
+}
+
 // --- Arm ---
 void StorageManager::saveArmPosOut(int pos) {
     if (prefs.begin("peach", false)) {
@@ -171,4 +221,36 @@ float StorageManager::loadArmPosition() {
         prefs.end();
     }
     return pos;
+}
+
+void StorageManager::saveArmJogSpeed(int speed) {
+    if (prefs.begin("peach", false)) {
+        prefs.putInt("armJogSpd", speed);
+        prefs.end();
+    }
+}
+
+int StorageManager::loadArmJogSpeed(int defaultSpeed) {
+    int speed = defaultSpeed;
+    if (prefs.begin("peach", false)) {
+        speed = prefs.getInt("armJogSpd", defaultSpeed);
+        prefs.end();
+    }
+    return speed;
+}
+
+void StorageManager::saveArmGoSpeed(int speed) {
+    if (prefs.begin("peach", false)) {
+        prefs.putInt("armGoSpd", speed);
+        prefs.end();
+    }
+}
+
+int StorageManager::loadArmGoSpeed(int defaultSpeed) {
+    int speed = defaultSpeed;
+    if (prefs.begin("peach", false)) {
+        speed = prefs.getInt("armGoSpd", defaultSpeed);
+        prefs.end();
+    }
+    return speed;
 }

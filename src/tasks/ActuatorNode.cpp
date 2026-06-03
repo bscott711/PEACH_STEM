@@ -89,7 +89,10 @@ void ActuatorNode::processCommand(const ActuatorCommand& cmd) {
 }
 
 void ActuatorNode::hwUpdate() {
-    float dynamicPctPerTick = (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / (float)FULL_EXTEND_TIME_MS;
+    float maxPctPerTick = (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / (float)FULL_EXTEND_TIME_MS;
+    float pwmRatio = (float)targetSpeedPWM / 255.0f;
+    // Square the ratio to better approximate DC motor non-linearity under load
+    float dynamicPctPerTick = maxPctPerTick * (pwmRatio * pwmRatio);
 
     // Non-blocking movement evaluation with float-based ramping
     if (currentPercent < targetPercent) {
