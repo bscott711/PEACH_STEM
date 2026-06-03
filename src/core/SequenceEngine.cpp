@@ -27,20 +27,20 @@ void autonomous_task(void *pvParameters) {
   const SequenceStep sequence[] = {
       {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z"},
       {SEQ_MOVE_ARM, 100, 0, 0, "Auto: Arm Tip"},
-      {SEQ_MOVE_ACTUATOR, 2, 0, 255, "Auto: Act Extend"},
-      {SEQ_MOVE_Z, 0, 0, 0, "Auto: Lower Z"},
-      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix Retract"},
-      {SEQ_MOVE_ACTUATOR, 2, 0, 255, "Auto: Mix Extend"},
-      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix Retract"},
-      {SEQ_MOVE_ACTUATOR, 2, 0, 255, "Auto: Mix Extend"},
-      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix Retract"},
-      {SEQ_MOVE_ACTUATOR, 2, 0, 255, "Auto: Mix Extend"},
-      {SEQ_MOVE_ACTUATOR, 0, 0, 255, "Auto: Pipette"},
+      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Act Mid"},
+      {SEQ_MOVE_Z, 0, 1, 0, "Auto: Lower Z Mid"},
+      {SEQ_MOVE_ACTUATOR, 0, 0, 255, "Auto: Mix 1 Bot"},
+      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix 1 Mid"},
+      {SEQ_MOVE_ACTUATOR, 0, 0, 255, "Auto: Mix 2 Bot"},
+      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix 2 Mid"},
+      {SEQ_MOVE_ACTUATOR, 0, 0, 255, "Auto: Mix 3 Bot"},
+      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix 3 Mid"},
       {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z"},
       {SEQ_MOVE_ARM, 0, 0, 0, "Auto: Arm Clear"},
-      {SEQ_MOVE_Z, 0, 1, 0, "Auto: Dispense Z"},
-      {SEQ_MOVE_ACTUATOR, 2, 0, slowSpeed, "Auto: Dispensing"},
-      {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z Done"}
+      {SEQ_MOVE_Z, 0, 0, 0, "Auto: Lower Z Bot"},
+      {SEQ_MOVE_ACTUATOR, 0, 0, 195, "Auto: Dispense"},
+      {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z"},
+      {SEQ_MOVE_ACTUATOR, 2, 0, 255, "Auto: Done"}
   };
 
   const int numSteps = sizeof(sequence) / sizeof(sequence[0]);
