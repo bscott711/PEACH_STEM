@@ -241,10 +241,20 @@ void MotorNode::hwUpdate() {
             }
         }
         
-        // Top limit check
-        if (limitSet[2] && currentPosition >= limits[2] && targetSpeed > 0) {
-            targetSpeed = 0;
-            LCD_setMessage("Top Reached");
+        // Top limit check with deceleration zone
+        if (limitSet[2] && targetSpeed > 0) {
+            float distToTop = limits[2] - currentPosition;
+            if (distToTop <= 0.0f) {
+                targetSpeed = 0;
+                LCD_setMessage("Top Reached");
+            } else if (distToTop < 5.0f) {
+                int minSpeed = 1000;
+                int maxSpeed = abs(targetSpeed);
+                if (maxSpeed > minSpeed) {
+                    int scaledSpeed = minSpeed + (int)((maxSpeed - minSpeed) * (distToTop / 5.0f));
+                    targetSpeed = scaledSpeed;
+                }
+            }
         }
         
         // Home position hard stop checks removed as we now rely on optical limit switches

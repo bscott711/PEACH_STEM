@@ -29,6 +29,7 @@ extern MotorNode g_motorNode;
 
 SemaphoreHandle_t systemStateMutex;
 SemaphoreHandle_t encoderStateMutex;
+SemaphoreHandle_t tmcUartMutex;
 EventGroupHandle_t controlEvents;
 
 SystemState systemState = {.mode = IDLE,
@@ -48,6 +49,7 @@ SystemState systemState = {.mode = IDLE,
 void initSystemState() {
   systemStateMutex = xSemaphoreCreateMutex();
   encoderStateMutex = xSemaphoreCreateMutex();
+  tmcUartMutex = xSemaphoreCreateMutex();
   controlEvents = xEventGroupCreate();
 
   StorageManager::init();

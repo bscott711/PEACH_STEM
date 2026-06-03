@@ -31,6 +31,7 @@
 extern SystemState systemState;
 extern SemaphoreHandle_t systemStateMutex;
 extern SemaphoreHandle_t encoderStateMutex;
+extern SemaphoreHandle_t tmcUartMutex;
 extern EventGroupHandle_t controlEvents;
 
 // Queue handles declared in controller.cpp, extern here for access

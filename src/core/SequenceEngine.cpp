@@ -83,9 +83,13 @@ void autonomous_task(void *pvParameters) {
 
         // Determine direction
         bool goingUp = (targetZ > currentPos);
-        int velocity = goingUp ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
+        int velocity = 0;
         
-        g_motorNode.setSpeed(velocity);
+        // Only command movement if we aren't already there (prevents instant speed spikes)
+        if (abs(targetZ - currentPos) > 0.1f) {
+            velocity = goingUp ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
+            g_motorNode.setSpeed(velocity);
+        }
 
         // Wait until position is reached or E-STOP
         bool posReached = false;

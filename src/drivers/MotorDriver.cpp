@@ -3,7 +3,8 @@
 
 void motorDriver::begin(HardwareSerial &serial,
                         TMC2209::SerialAddress address) {
-  driver.setup(serial, SERIAL_BAUD_RATE, address, RXD1, TXD1);
+  if (xSemaphoreTake(tmcUartMutex, portMAX_DELAY) == pdTRUE) {
+    driver.setup(serial, SERIAL_BAUD_RATE, address, RXD1, TXD1);
   driver.setRunCurrent(RUN_CURRENT_PERCENT);
 
   driver.disableCoolStep();
@@ -11,21 +12,31 @@ void motorDriver::begin(HardwareSerial &serial,
   driver.setMicrostepsPerStep(16);
   driver.setCoolStepDurationThreshold(0);
 
-  driver.enable();
+    driver.enable();
 
-  driver.moveAtVelocity(0);
+    driver.moveAtVelocity(0);
+    xSemaphoreGive(tmcUartMutex);
+  }
   vTaskDelay(pdMS_TO_TICKS(200));
 }
 
 void motorDriver::setVelocity(int newSpeed) {
   newSpeed = constrain(newSpeed, -MOTOR_MAX_SAFE_STEPS, MOTOR_MAX_SAFE_STEPS);
 
-  if (newSpeed > 0) {
+  if (xSemaphoreTake(tmcUartMutex, portMAX_DELAY) == pdTRUE) {
+    if (newSpeed > 0) {
     driver.disableInverseMotorDirection();
-  } else {
-    driver.enableInverseMotorDirection();
+    } else {
+      driver.enableInverseMotorDirection();
+    }
+    driver.moveAtVelocity(abs(newSpeed));
+    xSemaphoreGive(tmcUartMutex);
   }
-  driver.moveAtVelocity(abs(newSpeed));
 }
 
-void motorDriver::stop() { driver.moveAtVelocity(0); }
+void motorDriver::stop() {
+  if (xSemaphoreTake(tmcUartMutex, portMAX_DELAY) == pdTRUE) {
+    driver.moveAtVelocity(0);
+    xSemaphoreGive(tmcUartMutex);
+  }
+}
