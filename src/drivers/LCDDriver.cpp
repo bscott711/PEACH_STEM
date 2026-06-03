@@ -232,24 +232,15 @@ void draw_otaScreen() {
   const char* otaStatus = NetworkManager::getOTAStatus();
 
   // Draw the growing tree!
-  int startX = 96; // Move closer to right hand side
+  int startX = 64; // Center
   int startY = 64; // Bottom of screen
   float baseTrunkLength = 12.0f; // Shorter trunk
   
   drawBranch(otaProgress, startX, startY, baseTrunkLength, 0.0f, 0, 1);
 
   // UI Overlay - Top Left
-  u8g2.setFont(u8g2_font_helvB08_tr);
-  u8g2.drawStr(0, 10, "SYS_OTA_UPDATE");
-  
-  u8g2.setFont(u8g2_font_helvB12_tr); // Smaller font for progress
-  char progressStr[16];
-  snprintf(progressStr, sizeof(progressStr), "%d%%", otaProgress);
-  u8g2.drawStr(0, 30, progressStr);
-  
   u8g2.setFont(u8g2_font_tiny5_tf);
-  u8g2.drawStr(0, 42, "Status:");
-  u8g2.drawStr(0, 52, otaStatus);
+  u8g2.drawStr(0, 10, "PEACH PIT UPDATING");
 
   u8g2.sendBuffer();
 }
