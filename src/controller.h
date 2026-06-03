@@ -56,8 +56,6 @@ void saveActuatorLimits();
 
 // FreeRTOS task entries
 void controller_task(void *pvParameters);
-void autonomous_task(void *pvParameters);
-void motor_goto_task(void *pvParameters);
 
 // Utility functions
 float motorDistanceCalculator(float speed, int timeInMS);
