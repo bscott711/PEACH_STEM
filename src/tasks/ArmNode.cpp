@@ -1,4 +1,6 @@
 #include "tasks/ArmNode.h"
+#include "controller.h"
+#include "drivers/LCDDriver.h"
 #include <esp_log.h>
 
 static const char* TAG = "ARM_NODE";
@@ -122,6 +124,50 @@ void ArmNode::hwUpdate() {
         float stepsPerSec = (float)targetSpeed * 0.715f;
         float deltaPos = stepsPerSec * ((float)TASK_UPDATE_INTERVAL_MS / 1000.0f);
         currentPosition += deltaPos;
+    }
+    
+    // Read Z motor telemetry for interlock logic
+    MotorTelemetry motorTel;
+    bool zAtTop = false;
+    if (motorTelQueue != NULL && xQueuePeek(motorTelQueue, &motorTel, 0) == pdPASS) {
+        if (motorTel.limitSet[2] && motorTel.currentPosition >= motorTel.limits[2] - 5.0f) {
+            zAtTop = true;
+        }
+    }
+    
+    // Check if arm is in or trying to enter the collision zone (between buffer and tip)
+    bool inCollisionZone = false;
+    if (posIn != -1 && posBuffer != -1) {
+        float minZone = min((float)posBuffer, (float)posIn);
+        float maxZone = max((float)posBuffer, (float)posIn);
+        if (currentPosition >= minZone && currentPosition <= maxZone) {
+            inCollisionZone = true;
+        }
+    }
+    
+    // Hard Endstops
+    if (posOut != -1 && posIn != -1 && targetSpeed != 0) {
+        float minLim = min((float)posOut, (float)posIn);
+        float maxLim = max((float)posOut, (float)posIn);
+        
+        if (currentPosition >= maxLim && targetSpeed > 0) {
+            targetSpeed = 0;
+            currentPosition = maxLim;
+            isTrackingTarget = false;
+            LCD_setMessage((posIn > posOut) ? "Arm Tip Reached" : "Arm Clear Reached");
+        } else if (currentPosition <= minLim && targetSpeed < 0) {
+            targetSpeed = 0;
+            currentPosition = minLim;
+            isTrackingTarget = false;
+            LCD_setMessage((posIn < posOut) ? "Arm Tip Reached" : "Arm Clear Reached");
+        }
+    }
+    
+    // Interlock Check
+    if (inCollisionZone && !zAtTop && targetSpeed != 0) {
+        targetSpeed = 0;
+        isTrackingTarget = false;
+        LCD_setMessage("Interlock: Z Not Clear!");
     }
     
     driver.setVelocity(targetSpeed);
