@@ -54,20 +54,7 @@ void initSystemState() {
   }
 }
 
-void saveMotorState() {
-  // Motor node manages its own NVS saves internally
-  ESP_LOGI("CTRL", "Motor state saved by MotorNode");
-}
-
-void saveMotorLimits() {
-  // Motor and Actuator nodes manage their own NVS saves
-  ESP_LOGI("CTRL", "Limits saved by respective Nodes");
-}
-
-void saveActuatorLimits() {
-  // Actuator node manages its own NVS saves
-  ESP_LOGI("CTRL", "Actuator limits saved by ActuatorNode");
-}
+// Removed unused state save wrappers
 
 // ============================================================================
 // Main Controller Task
@@ -96,14 +83,4 @@ void controller_task(void *pvParameters) {
 
 
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-float motorDistanceCalculator(float speed, int timeInMS) {
-  return 1.372e-6f * speed * timeInMS;
-}
-
-float motorSpeedCalculator(float position, int timeInMS) {
-  return (position / timeInMS) / 1.372e-6f;
-}
+// Removed unused motor calculators

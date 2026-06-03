@@ -230,14 +230,7 @@ void MotorNode::hwUpdate() {
             LCD_setMessage("Top Reached");
         }
         
-        // Home position hard stop (only if we trust our homing, which sets pos=0 at Top)
-        // Wait, if Top is 0 and we move down (negative speed), position gets more negative?
-        // Let's assume Top is positive and Bot is 0 or something. 
-        // The original code had: Home position hard stop: if (currentPosition <= 0.0f && targetSpeed < 0) targetSpeed = 0;
-        // This implies Top is higher positive value, and Home (which was Bottom) was 0.
-        // Wait, StallGuard homing moved down! 
-        // "We aren't using any stallgaurd homing. I will be adding two optical limit switches for the z axis."
-        // Let's just trust the limit checks and ignore the hard 0 stop for now to prevent issues.
+        // Home position hard stop checks removed as we now rely on optical limit switches
     }
     
     // Hardware Endstop Overrides

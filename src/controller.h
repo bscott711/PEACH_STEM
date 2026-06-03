@@ -44,13 +44,6 @@ extern QueueHandle_t motorTelQueue;
 // Removed OTA globals from here
 
 void initSystemState();
-void saveMotorState();
-void saveMotorLimits();
-void saveActuatorLimits();
 
 // FreeRTOS task entries
 void controller_task(void *pvParameters);
-
-// Utility functions
-float motorDistanceCalculator(float speed, int timeInMS);
-float motorSpeedCalculator(float position, int timeInMS);
