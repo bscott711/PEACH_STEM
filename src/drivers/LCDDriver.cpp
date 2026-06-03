@@ -162,22 +162,24 @@ static void drawBranch(int progress, float x, float y, float len, float angle, i
       // Generate procedural but deterministic branch angles and lengths
       float leftLenMod = 0.65f + hash_fn(pathIndex, 1) * 0.15f;
       float rightLenMod = 0.65f + hash_fn(pathIndex, 2) * 0.15f;
-      float leftAngleMod = 0.25f + hash_fn(pathIndex, 3) * 0.3f;
-      float rightAngleMod = 0.25f + hash_fn(pathIndex, 4) * 0.3f;
+      // Increased branch angles to spread them out more
+      float leftAngleMod = 0.45f + hash_fn(pathIndex, 3) * 0.4f;
+      float rightAngleMod = 0.45f + hash_fn(pathIndex, 4) * 0.4f;
 
       // Spawn left and right children
       drawBranch(progress, endX, endY, len * leftLenMod, angle - leftAngleMod, depth + 1, pathIndex * 2);
       drawBranch(progress, endX, endY, len * rightLenMod, angle + rightAngleMod, depth + 1, pathIndex * 2 + 1);
 
       // Occasionally spawn a middle branch for organic density
-      if (hash_fn(pathIndex, 5) > 0.8f) { // Reduced from 0.6f
+      // Reduced probability of middle branch (fewer branches)
+      if (hash_fn(pathIndex, 5) > 0.9f) { 
          drawBranch(progress, endX, endY, len * 0.5f, angle + (hash_fn(pathIndex, 6) * 0.2f - 0.1f), depth + 1, pathIndex * 2 + 2);
       }
     }
 
     // --- STAGE 3: The Leaves (50% - 80%) ---
-    // Reduced leaf density (only 40% chance of leaf)
-    if (depth >= 2 && hash_fn(pathIndex, 11) > 0.6f) {
+    // Reduced leaf density (only 25% chance of leaf)
+    if (depth >= 2 && hash_fn(pathIndex, 11) > 0.75f) {
       float leafStart = 50 + hash_fn(pathIndex, 7) * 15;
       float leafEnd = leafStart + 15;
       
@@ -201,8 +203,9 @@ static void drawBranch(int progress, float x, float y, float len, float angle, i
         float pY = endY;
         
         // Peach falling animation (90% - 100%)
-        // Make this specific peach fall if it matches a hash condition
-        if (progress > 90 && hash_fn(pathIndex, 10) > 0.6f) {
+        // Make this specific peach fall if it matches a hash condition, 
+        // AND ensure it is far enough from the trunk (startX = 64) so it doesn't get hidden
+        if (progress > 90 && hash_fn(pathIndex, 10) > 0.6f && abs((int)endX - 64) > 12) {
              float fallProgress = clamp((progress - 90.0f) / 10.0f, 0.0f, 1.0f);
              // Quadratic fall: distance = 1/2 * g * t^2
              pY += (62.0f - endY) * fallProgress * fallProgress; 
