@@ -204,36 +204,8 @@ static void draw_displayTimer() {
   u8g2.drawStr(0, 6, timerBuffer);
 }
 
-static void draw_buttonStatus() {
+static void draw_buttonStatus(const UIData& data) {
   uint32_t localBtnTime[4] = {0};
-
-  // 1. Grab encoder state: clear long-press flags and record press time
-  uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-  if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-    for (int i = 0; i < 4; i++) {
-      if (g_encoderState.buttonLongPressed[i]) {
-        g_encoderState.buttonLongPressed[i] = false;
-        // Notify LCD so the icon flashes briefly, same as short press
-        LCD_notifyButtonPress(i);
-      }
-
-      // Live feedback for held buttons
-      if (g_encoderState.buttonHeld[i]) {
-        uint32_t duration =
-            now - (g_encoderState.buttonPressTime[i] * portTICK_PERIOD_MS);
-        if (duration >= 2500) {
-          LCD_setMessage("Very Long Press");
-        } else if (duration >= 800) {
-          LCD_setMessage("Long Press");
-        } else if (duration >= 100) {
-          LCD_setMessage("Press...");
-        }
-      }
-    }
-    xSemaphoreGive(encoderStateMutex);
-  } else {
-    ESP_LOGW("LCD", "encoderStateMutex timeout in buttonStatus");
-  }
 
   // 2. Grab LCD internal state (lower priority mutex)
   if (lcdMutex != NULL &&
@@ -244,7 +216,7 @@ static void draw_buttonStatus() {
     xSemaphoreGive(lcdMutex);
   }
 
-  now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+  uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
 
   // 3. Render using local copies (no mutexes held during drawing)
   for (int i = 0; i < 4; i++) {
@@ -258,55 +230,23 @@ static void draw_buttonStatus() {
   }
 }
 
-static void draw_encoderStatus() {
+static void draw_encoderStatus(const UIData& data) {
   char statusBuffer[32];
 
-  // Static caches so the UI doesn't zero out if the mutex times out
-  static int armTarget = 0, armActual = 0, actuatorTarget = 0,
-             actuatorActual = 0, motorTarget = 0;
-  static int armPosOut = 0, armPosIn = 100;
-  static DeviceMode currentMode = IDLE;
-  static float motorLimits[3] = {0.0f, 0.0f, 0.0f};
-  static bool motorLimitSet[3] = {false, false, false};
-  static float currentPos = 0.0f;
-  static Enc3Menu enc3MenuSelection = MENU_AUTO;
-  static Enc1Menu enc1MenuSelection = MENU_ACT_MAN;
+  int armTarget = data.armTarget;
+  int armActual = data.armActual;
+  int armPosOut = data.armPosOut;
+  int armPosIn = data.armPosIn;
 
-  // 1. Read motion subsystem state via lock-free telemetry queues
-  ArmTelemetry armTel;
-  ActuatorTelemetry actTel;
-  MotorTelemetry motTel;
-  
-  if (xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
-    armTarget = (int)armTel.targetPosition;
-    armActual = (int)armTel.currentPosition;
-    armPosOut = armTel.posOut;
-    armPosIn = armTel.posIn;
-  }
-  
-  if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
-    actuatorTarget = actTel.targetPercent;
-    actuatorActual = (int)actTel.currentPercent;
-  }
-  
-  if (xQueuePeek(motorTelQueue, &motTel, 0) == pdPASS) {
-    motorTarget = motTel.targetSpeed;
-    currentPos = motTel.currentPosition;
-    for (int i = 0; i < 3; i++) {
-      motorLimits[i] = motTel.limits[i];
-      motorLimitSet[i] = motTel.limitSet[i];
-    }
-  }
+  int actuatorTarget = data.actuatorTarget;
+  int actuatorActual = data.actuatorActual;
 
-  // 2. Read UI-specific state via systemStateMutex (mode, menu selections)
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-    currentMode = systemState.mode;
-    enc3MenuSelection = systemState.enc3MenuSelection;
-    enc1MenuSelection = systemState.enc1MenuSelection;
-    xSemaphoreGive(systemStateMutex);
-  } else {
-    ESP_LOGW("LCD", "systemStateMutex timeout; showing cached values");
-  }
+  int motorTarget = data.motorTargetSpeed;
+  float currentPos = data.motorPos;
+
+  DeviceMode currentMode = data.currentMode;
+  Enc3Menu enc3MenuSelection = data.enc3Menu;
+  Enc1Menu enc1MenuSelection = data.enc1Menu;
 
   // Encoder 0: Arm — Row at y=11, text baseline y=17
   // We don't have access to controller's internal calStep, so we just show Arm data
@@ -396,10 +336,10 @@ static void draw_encoderStatus() {
   }
   u8g2.drawStr(0, 44, statusBuffer);
 
-  bool botSet = motorLimitSet[0];
-  bool topSet = motorLimitSet[2];
-  float minLim = motorLimits[0];
-  float maxLim = motorLimits[2];
+  bool botSet = data.motorLimitSet[0];
+  bool topSet = data.motorLimitSet[2];
+  float minLim = data.motorLimits[0];
+  float maxLim = data.motorLimits[2];
 
   if (botSet && topSet && maxLim > minLim) {
     // Sliding dot UI: track from x=72 to x=124, y centered at 41
@@ -409,8 +349,8 @@ static void draw_encoderStatus() {
     float range = maxLim - minLim;
     if (range > 0.01f) {
       for (int i = 0; i < 3; i++) {
-        if (motorLimitSet[i]) {
-          float val = motorLimits[i];
+        if (data.motorLimitSet[i]) {
+          float val = data.motorLimits[i];
           if (val < minLim)
             val = minLim;
           if (val > maxLim)
@@ -446,7 +386,7 @@ static void draw_encoderStatus() {
 #endif
 }
 
-static void draw_actionMessage() {
+static void draw_actionMessage(const UIData& data) {
   bool pending = false;
   char localMsg[32] = "";
   uint32_t timestamp = 0;
@@ -464,8 +404,7 @@ static void draw_actionMessage() {
   }
 
   uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-  EventBits_t events = xEventGroupGetBits(controlEvents);
-  bool isAuto = (events & BIT_AUTO_RUNNING) != 0;
+  bool isAuto = data.isAutoRunning;
 
   // Show message for 2.5 seconds after being set, or infinitely if in Auto
   // sequence
@@ -485,17 +424,17 @@ static void draw_actionMessage() {
 
 // ============ Main Draw Function ============
 
-void draw_menu() {
+void draw_menu(const UIData& data) {
   u8g2.clearBuffer();
 
   draw_displayTimer();
-  draw_buttonStatus();
+  draw_buttonStatus(data);
   u8g2.drawHLine(0, 10, 128);
 
-  draw_encoderStatus();
+  draw_encoderStatus(data);
   u8g2.drawHLine(0, 46, 128);
 
-  draw_actionMessage();
+  draw_actionMessage(data);
 
   u8g2.sendBuffer(); // Push to OLED
 }

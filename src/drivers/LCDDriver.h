@@ -1,5 +1,6 @@
 #pragma once
 #include "controller.h"
+#include "core/UIData.h"
 #include "drivers/EncoderDriver.h"
 #include <Arduino.h>
 #include <U8g2lib.h>
@@ -15,4 +16,4 @@ void LCD_setMessage(const char *msg);
 void LCD_notifyButtonPress(int index);
 
 void LCDInit();
-void draw_menu();
+void draw_menu(const UIData& data);

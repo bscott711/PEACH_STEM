@@ -164,6 +164,7 @@ void setup() {
   actuatorTelQueue = g_actuatorNode.getTelQueue();
   motorCmdQueue = g_motorNode.getCmdQueue();
   motorTelQueue = g_motorNode.getTelQueue();
+  lcdDataQueue = xQueueCreate(1, sizeof(UIData));
 
   // 3. Create Dependent Tasks
   xTaskCreate(encoderTask, "EncoderTask", 4096, NULL, 3, NULL);

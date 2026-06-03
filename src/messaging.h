@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include "core/UIData.h"
 
 // ============================================================================
 // ARM MESSAGING
@@ -97,3 +98,5 @@ struct MotorTelemetry {
 
 extern QueueHandle_t motorCmdQueue;
 extern QueueHandle_t motorTelQueue;
+
+extern QueueHandle_t lcdDataQueue;

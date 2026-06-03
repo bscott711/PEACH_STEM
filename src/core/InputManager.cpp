@@ -26,10 +26,64 @@ void InputManager::init() {
 }
 
 void InputManager::process() {
+    // 1. Button feedback
+    uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        for (int i = 0; i < 4; i++) {
+            if (g_encoderState.buttonHeld[i]) {
+                uint32_t duration = now - (g_encoderState.buttonPressTime[i] * portTICK_PERIOD_MS);
+                if (duration >= 2500) {
+                    LCD_setMessage("Very Long Press");
+                } else if (duration >= 800) {
+                    LCD_setMessage("Long Press");
+                } else if (duration >= 100) {
+                    LCD_setMessage("Press...");
+                }
+            }
+        }
+        xSemaphoreGive(encoderStateMutex);
+    }
+
     handleArmEncoder();
     handleActuatorEncoder();
     handleMotorEncoder();
     handleAutonomousEncoder();
+}
+
+void InputManager::populateUIData(UIData& data) {
+    if (xSemaphoreTake(systemStateMutex, 0) == pdTRUE) {
+        data.currentMode = systemState.mode;
+        data.enc1Menu = systemState.enc1MenuSelection;
+        data.enc3Menu = systemState.enc3MenuSelection;
+        xSemaphoreGive(systemStateMutex);
+    }
+    
+    EventBits_t events = xEventGroupGetBits(controlEvents);
+    data.isAutoRunning = (events & BIT_AUTO_RUNNING) != 0;
+
+    ArmTelemetry armTel;
+    if (xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
+        data.armTarget = (int)armTel.targetPosition;
+        data.armActual = (int)armTel.currentPosition;
+        data.armPosOut = armTel.posOut;
+        data.armPosIn = armTel.posIn;
+    }
+
+    ActuatorTelemetry actTel;
+    if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
+        data.actuatorTarget = actTel.targetPercent;
+        data.actuatorActual = (int)actTel.currentPercent;
+    }
+
+    MotorTelemetry motTel;
+    if (xQueuePeek(motorTelQueue, &motTel, 0) == pdPASS) {
+        data.motorTargetSpeed = motTel.targetSpeed;
+        data.motorPos = motTel.currentPosition;
+        for(int i=0; i<3; i++) {
+            data.motorLimits[i] = motTel.limits[i];
+            data.motorLimitSet[i] = motTel.limitSet[i];
+        }
+    }
 }
 
 void InputManager::handleArmEncoder() {

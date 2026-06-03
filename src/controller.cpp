@@ -19,6 +19,7 @@ QueueHandle_t actuatorCmdQueue;
 QueueHandle_t actuatorTelQueue;
 QueueHandle_t motorCmdQueue;
 QueueHandle_t motorTelQueue;
+QueueHandle_t lcdDataQueue;
 
 // --- OTA & WiFi Global States ---
 volatile bool g_otaActive = false;
@@ -86,6 +87,13 @@ void controller_task(void *pvParameters) {
   while (1) {
     // Process encoder inputs and dispatch commands
     InputManager::process();
+
+    // Build and push UIData
+    UIData uiData;
+    InputManager::populateUIData(uiData);
+    if (lcdDataQueue) {
+        xQueueOverwrite(lcdDataQueue, &uiData);
+    }
 
     vTaskDelayUntil(&lastWakeTime, CONTROLLER_INTERVAL);
   }
