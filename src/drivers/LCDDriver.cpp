@@ -170,13 +170,14 @@ static void drawBranch(int progress, float x, float y, float len, float angle, i
       drawBranch(progress, endX, endY, len * rightLenMod, angle + rightAngleMod, depth + 1, pathIndex * 2 + 1);
 
       // Occasionally spawn a middle branch for organic density
-      if (hash_fn(pathIndex, 5) > 0.6f) {
+      if (hash_fn(pathIndex, 5) > 0.8f) { // Reduced from 0.6f
          drawBranch(progress, endX, endY, len * 0.5f, angle + (hash_fn(pathIndex, 6) * 0.2f - 0.1f), depth + 1, pathIndex * 2 + 2);
       }
     }
 
     // --- STAGE 3: The Leaves (50% - 80%) ---
-    if (depth >= 2) {
+    // Reduced leaf density (only 40% chance of leaf)
+    if (depth >= 2 && hash_fn(pathIndex, 11) > 0.6f) {
       float leafStart = 50 + hash_fn(pathIndex, 7) * 15;
       float leafEnd = leafStart + 15;
       
@@ -193,17 +194,29 @@ static void drawBranch(int progress, float x, float y, float len, float angle, i
 
     // --- STAGE 4: The Peaches (80% - 100%) ---
     if (depth == maxDepth && progress > 80) {
-      // Only spawn peaches on certain branches
-      if (hash_fn(pathIndex, 9) > 0.4f) {
-        float peachGrowth = clamp((progress - 80.0f) / 20.0f, 0.0f, 1.0f);
+      // Only spawn peaches on certain branches (much lower probability)
+      if (hash_fn(pathIndex, 9) > 0.75f) {
+        float peachGrowth = clamp((progress - 80.0f) / 10.0f, 0.0f, 1.0f); // Grow faster (80-90)
         
+        float pY = endY;
+        
+        // Peach falling animation (90% - 100%)
+        // Make this specific peach fall if it matches a hash condition
+        if (progress > 90 && hash_fn(pathIndex, 10) > 0.6f) {
+             float fallProgress = clamp((progress - 90.0f) / 10.0f, 0.0f, 1.0f);
+             // Quadratic fall: distance = 1/2 * g * t^2
+             pY += (62.0f - endY) * fallProgress * fallProgress; 
+             // Stop at ground
+             if (pY > 60.0f) pY = 60.0f;
+        }
+
         if (peachGrowth > 0) {
-          int radius = (int)(5.0f * peachGrowth);
+          int radius = (int)(4.0f * peachGrowth); // slightly smaller peaches
           if (radius > 0) {
               // Draw small peach body (circle with cleft line)
-              u8g2.drawDisc((int)endX, (int)endY, radius);
+              u8g2.drawDisc((int)endX, (int)pY, radius);
               u8g2.setDrawColor(0);
-              u8g2.drawLine((int)endX, (int)(endY - radius), (int)endX, (int)(endY + radius - 1));
+              u8g2.drawLine((int)endX, (int)(pY - radius), (int)endX, (int)(pY + radius - 1));
               u8g2.setDrawColor(1);
           }
         }
@@ -219,9 +232,9 @@ void draw_otaScreen() {
   const char* otaStatus = NetworkManager::getOTAStatus();
 
   // Draw the growing tree!
-  int startX = 64; // Center
+  int startX = 96; // Move closer to right hand side
   int startY = 64; // Bottom of screen
-  float baseTrunkLength = 16.0f;
+  float baseTrunkLength = 12.0f; // Shorter trunk
   
   drawBranch(otaProgress, startX, startY, baseTrunkLength, 0.0f, 0, 1);
 
@@ -229,7 +242,7 @@ void draw_otaScreen() {
   u8g2.setFont(u8g2_font_helvB08_tr);
   u8g2.drawStr(0, 10, "SYS_OTA_UPDATE");
   
-  u8g2.setFont(u8g2_font_helvB18_tr);
+  u8g2.setFont(u8g2_font_helvB12_tr); // Smaller font for progress
   char progressStr[16];
   snprintf(progressStr, sizeof(progressStr), "%d%%", otaProgress);
   u8g2.drawStr(0, 30, progressStr);
