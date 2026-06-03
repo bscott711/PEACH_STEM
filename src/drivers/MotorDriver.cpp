@@ -5,7 +5,7 @@ void motorDriver::begin(HardwareSerial &serial,
                         TMC2209::SerialAddress address) {
   if (xSemaphoreTake(tmcUartMutex, portMAX_DELAY) == pdTRUE) {
     driver.setup(serial, SERIAL_BAUD_RATE, address, RXD1, TXD1);
-  driver.setRunCurrent(RUN_CURRENT_PERCENT);
+    driver.setAllCurrentValues(RUN_CURRENT_PERCENT, RUN_CURRENT_PERCENT, 10);
 
   driver.disableCoolStep();
   driver.enableStealthChop();

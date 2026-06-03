@@ -411,12 +411,14 @@ void InputManager::handleMenuEncoder() {
     if (systemState.s4InSpeedEdit) {
       if (axis == S4_ARM) {
         if (item == S4_ARM_JOG_SPD) {
-          systemState.armJogSpeed += delta * 100;
-          if (systemState.armJogSpeed < 100) systemState.armJogSpeed = 100;
+          int stepSize = (systemState.armJogSpeed <= 100 && delta < 0) || (systemState.armJogSpeed < 100 && delta > 0) ? 10 : 100;
+          systemState.armJogSpeed += delta * stepSize;
+          if (systemState.armJogSpeed < 10) systemState.armJogSpeed = 10;
           if (systemState.armJogSpeed > 5000) systemState.armJogSpeed = 5000;
         } else if (item == S4_ARM_GO_SPD) {
-          systemState.armGoSpeed += delta * 100;
-          if (systemState.armGoSpeed < 100) systemState.armGoSpeed = 100;
+          int stepSize = (systemState.armGoSpeed <= 100 && delta < 0) || (systemState.armGoSpeed < 100 && delta > 0) ? 10 : 100;
+          systemState.armGoSpeed += delta * stepSize;
+          if (systemState.armGoSpeed < 10) systemState.armGoSpeed = 10;
           if (systemState.armGoSpeed > 5000) systemState.armGoSpeed = 5000;
         }
       } else if (axis == S4_ACT) {
@@ -431,12 +433,14 @@ void InputManager::handleMenuEncoder() {
         }
       } else if (axis == S4_Z) {
         if (item == S4_POS_JOG_SPD) {
-          systemState.zJogSpeed += delta * 100;
-          if (systemState.zJogSpeed < 100) systemState.zJogSpeed = 100;
+          int stepSize = (systemState.zJogSpeed <= 100 && delta < 0) || (systemState.zJogSpeed < 100 && delta > 0) ? 10 : 100;
+          systemState.zJogSpeed += delta * stepSize;
+          if (systemState.zJogSpeed < 10) systemState.zJogSpeed = 10;
           if (systemState.zJogSpeed > 5000) systemState.zJogSpeed = 5000;
         } else if (item == S4_POS_GO_SPD) {
-          systemState.zGoSpeed += delta * 100;
-          if (systemState.zGoSpeed < 100) systemState.zGoSpeed = 100;
+          int stepSize = (systemState.zGoSpeed <= 100 && delta < 0) || (systemState.zGoSpeed < 100 && delta > 0) ? 10 : 100;
+          systemState.zGoSpeed += delta * stepSize;
+          if (systemState.zGoSpeed < 10) systemState.zGoSpeed = 10;
           if (systemState.zGoSpeed > 5000) systemState.zGoSpeed = 5000;
         }
       }
