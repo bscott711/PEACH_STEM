@@ -14,7 +14,6 @@ ArmNode::ArmNode()
 }
 
 ArmNode::~ArmNode() {
-    preferences.end();
 }
 
 void ArmNode::hwInit() {
@@ -24,23 +23,14 @@ void ArmNode::hwInit() {
     driver.begin(Serial1, TMC2209::SERIAL_ADDRESS_1);
     
     // Open NVS namespace
-    if (!preferences.begin("peach", false)) {
-        ESP_LOGE(TAG, "Failed to open NVS namespace");
-    } else {
-        // Load calibration positions
-        posOut = preferences.getInt("armPosO", -1);
-        posIn = preferences.getInt("armPosI", -1);
-        
-        // Load last known position (restored on boot)
-        float lastPos = preferences.getFloat("armPos", 0.0f);
-        currentPosition = lastPos;
-        lastSavedPosition = lastPos;
-        
-        // Close NVS after loading — reopen per-write
-        preferences.end();
-        
-        ESP_LOGI(TAG, "Loaded Arm: posOut=%d, posIn=%d, lastPos=%.2f", posOut, posIn, lastPos);
-    }
+    StorageManager::loadArmCalibration(posOut, posIn);
+    float lastPos = StorageManager::loadArmPosition();
+    
+    // Set stepper to last known position immediately
+    currentPosition = lastPos;
+    lastSavedPosition = lastPos;
+    
+    ESP_LOGI(TAG, "Loaded calibration: Out=%d, In=%d, Pos=%.1f", posOut, posIn, lastPos);
 }
 
 void ArmNode::processCommand(const ArmCommand& cmd) {
@@ -80,30 +70,21 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             
         case ArmCmdAction::SET_POS_OUT:
             posOut = (int)currentPosition;
-            if (preferences.begin("peach", false)) {
-                preferences.putInt("armPosO", posOut);
-                preferences.end();
-            }
+            StorageManager::saveArmPosOut(posOut);
             ESP_LOGI(TAG, "Arm posOut set to %d", posOut);
             break;
             
         case ArmCmdAction::SET_POS_IN:
             posIn = (int)currentPosition;
-            if (preferences.begin("peach", false)) {
-                preferences.putInt("armPosI", posIn);
-                preferences.end();
-            }
+            StorageManager::saveArmPosIn(posIn);
             ESP_LOGI(TAG, "Arm posIn set to %d", posIn);
             break;
             
         case ArmCmdAction::CLEAR_CAL:
             posOut = -1;
             posIn = -1;
-            if (preferences.begin("peach", false)) {
-                preferences.putInt("armPosO", -1);
-                preferences.putInt("armPosI", -1);
-                preferences.end();
-            }
+            StorageManager::saveArmPosOut(-1);
+            StorageManager::saveArmPosIn(-1);
             ESP_LOGI(TAG, "Arm calibration cleared");
             break;
     }
@@ -136,12 +117,9 @@ void ArmNode::hwUpdate() {
     
     // Save position to NVS when stopped and position has changed
     if (targetSpeed == 0 && abs(currentPosition - lastSavedPosition) > 0.1f) {
-        if (preferences.begin("peach", false)) {
-            preferences.putFloat("armPos", currentPosition);
-            preferences.end();
-            lastSavedPosition = currentPosition;
-            ESP_LOGI(TAG, "Saved arm position: %.2f", currentPosition);
-        }
+        StorageManager::saveArmPosition(currentPosition);
+        lastSavedPosition = currentPosition;
+        ESP_LOGI(TAG, "Saved arm position: %.2f", currentPosition);
     }
 }
 

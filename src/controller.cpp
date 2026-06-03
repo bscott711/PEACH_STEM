@@ -8,7 +8,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <Preferences.h>
+#include "core/StorageManager.h"
 #include <cstdio>
 
 // Global queue handles (declared extern in controller.h)
@@ -29,7 +29,7 @@ extern ArmNode g_armNode;
 extern ActuatorNode g_actuatorNode;
 extern MotorNode g_motorNode;
 
-Preferences preferences;
+
 SemaphoreHandle_t systemStateMutex;
 SemaphoreHandle_t encoderStateMutex;
 EventGroupHandle_t controlEvents;
@@ -45,11 +45,7 @@ void initSystemState() {
   encoderStateMutex = xSemaphoreCreateMutex();
   controlEvents = xEventGroupCreate();
 
-  if (!preferences.begin("peach", false)) {
-    ESP_LOGE("CTRL", "Failed to open NVS namespace");
-    LCD_setMessage("NVS Init Error");
-    return;
-  }
+  StorageManager::init();
   
   // Initialize minimal state - subsystem state is managed by Active Nodes
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {

@@ -2,7 +2,7 @@
 #include "tasks/ActiveMotionNode.h"
 #include "messaging.h"
 #include "drivers/MotorDriver.h"
-#include <Preferences.h>
+#include "core/StorageManager.h"
 
 /**
  * @brief Stepper motor control node using Active Object pattern.
@@ -33,7 +33,6 @@ private:
     bool limitSet[3];    // Whether each limit is configured
     
     // NVS storage
-    Preferences preferences;
     
     // Homing state machine
     enum HomingState { H_IDLE, H_MOVING_TOP, H_BACKOFF, H_MOVING_BOT };

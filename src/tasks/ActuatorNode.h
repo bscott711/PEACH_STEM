@@ -1,7 +1,7 @@
 #pragma once
 #include "tasks/ActiveMotionNode.h"
 #include "messaging.h"
-#include <Preferences.h>
+#include "core/StorageManager.h"
 
 /**
  * @brief Linear actuator control node using Active Object pattern.
@@ -21,7 +21,6 @@ private:
     bool limitSet[3];    // Whether each limit is configured
     
     // NVS storage
-    Preferences preferences;
     
     // Motion parameters
     static constexpr uint32_t FULL_EXTEND_TIME_MS = 800;  // Time 0% to 100%

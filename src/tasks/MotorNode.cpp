@@ -24,7 +24,6 @@ MotorNode::MotorNode()
 }
 
 MotorNode::~MotorNode() {
-    preferences.end();
 }
 
 void MotorNode::hwInit() {
@@ -42,26 +41,13 @@ void MotorNode::hwInit() {
     isHomed = false;
     currentPosition = 0.0f;
     
-    // Open NVS namespace for limit storage
-    if (!preferences.begin("peach", false)) {
-        ESP_LOGE(TAG, "Failed to open NVS namespace");
-    } else {
-        // Load limit data from NVS
-        limits[0] = preferences.getFloat("limB", 0.0f);
-        limits[1] = preferences.getFloat("limM", 0.0f);
-        limits[2] = preferences.getFloat("limT", 0.0f);
-        limitSet[0] = preferences.getBool("limS_B", false);
-        limitSet[1] = preferences.getBool("limS_M", false);
-        limitSet[2] = preferences.getBool("limS_T", false);
-        
-        ESP_LOGI(TAG, "Loaded limits: Bot=%.2f(%s), Mid=%.2f(%s), Top=%.2f(%s)",
-                 limits[0], limitSet[0] ? "Y" : "N",
-                 limits[1], limitSet[1] ? "Y" : "N",
-                 limits[2], limitSet[2] ? "Y" : "N");
-        
-        // Close NVS after loading — reopen per-write
-        preferences.end();
-    }
+    StorageManager::loadMotorLimits(limits, limitSet);
+    StorageManager::loadMotorState(isHomed, currentPosition);
+    
+    ESP_LOGI(TAG, "Loaded limits: Bot=%.2f(%s), Mid=%.2f(%s), Top=%.2f(%s)",
+             limits[0], limitSet[0] ? "Y" : "N",
+             limits[1], limitSet[1] ? "Y" : "N",
+             limits[2], limitSet[2] ? "Y" : "N");
 }
 
 void MotorNode::processCommand(const MotorCommand& cmd) {
@@ -82,60 +68,39 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
         case MotorCmdAction::SET_LIMIT_BOT:
             limits[0] = cmd.value;
             limitSet[0] = true;
-            if (preferences.begin("peach", false)) {
-                preferences.putFloat("limB", limits[0]);
-                preferences.putBool("limS_B", true);
-                preferences.end();
-            }
+            StorageManager::saveMotorLimitBot(limits[0], true);
             ESP_LOGI(TAG, "Bottom limit set to %.2f", limits[0]);
             break;
             
         case MotorCmdAction::SET_LIMIT_MID:
             limits[1] = cmd.value;
             limitSet[1] = true;
-            if (preferences.begin("peach", false)) {
-                preferences.putFloat("limM", limits[1]);
-                preferences.putBool("limS_M", true);
-                preferences.end();
-            }
+            StorageManager::saveMotorLimitMid(limits[1], true);
             ESP_LOGI(TAG, "Middle limit set to %.2f", limits[1]);
             break;
             
         case MotorCmdAction::SET_LIMIT_TOP:
             limits[2] = cmd.value;
             limitSet[2] = true;
-            if (preferences.begin("peach", false)) {
-                preferences.putFloat("limT", limits[2]);
-                preferences.putBool("limS_T", true);
-                preferences.end();
-            }
+            StorageManager::saveMotorLimitTop(limits[2], true);
             ESP_LOGI(TAG, "Top limit set to %.2f", limits[2]);
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_BOT:
             limitSet[0] = false;
-            if (preferences.begin("peach", false)) {
-                preferences.putBool("limS_B", false);
-                preferences.end();
-            }
+            StorageManager::saveMotorLimitBot(limits[0], false);
             ESP_LOGI(TAG, "Bottom limit cleared");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_MID:
             limitSet[1] = false;
-            if (preferences.begin("peach", false)) {
-                preferences.putBool("limS_M", false);
-                preferences.end();
-            }
+            StorageManager::saveMotorLimitMid(limits[1], false);
             ESP_LOGI(TAG, "Middle limit cleared");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_TOP:
             limitSet[2] = false;
-            if (preferences.begin("peach", false)) {
-                preferences.putBool("limS_T", false);
-                preferences.end();
-            }
+            StorageManager::saveMotorLimitTop(limits[2], false);
             ESP_LOGI(TAG, "Top limit cleared");
             break;
             
@@ -190,11 +155,7 @@ void MotorNode::hwUpdate() {
                     targetSpeed = 0;
                     homingState = H_IDLE;
                     
-                    if (preferences.begin("peach", false)) {
-                        preferences.putBool("isHomed", true);
-                        preferences.putFloat("pos", 0.0f);
-                        preferences.end();
-                    }
+                    StorageManager::saveMotorState(true, 0.0f);
                 } else if (xTaskGetTickCount() - homingStartTime > pdMS_TO_TICKS(15000)) {
                     ESP_LOGE(TAG, "Homing timeout");
                     LCD_setMessage("Homing: TIMEOUT");
@@ -300,11 +261,7 @@ void MotorNode::hwUpdate() {
     if (targetSpeed == 0 && isHomed) {
         static uint32_t lastSave = 0;
         if (xTaskGetTickCount() - lastSave > pdMS_TO_TICKS(5000)) {
-            if (preferences.begin("peach", false)) {
-                preferences.putBool("isHomed", isHomed);
-                preferences.putFloat("pos", currentPosition);
-                preferences.end();
-            }
+            StorageManager::saveMotorState(isHomed, currentPosition);
             lastSave = xTaskGetTickCount();
         }
     }

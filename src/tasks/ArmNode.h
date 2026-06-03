@@ -2,7 +2,7 @@
 #include "tasks/ActiveMotionNode.h"
 #include "messaging.h"
 #include "drivers/MotorDriver.h"
-#include <Preferences.h>
+#include "core/StorageManager.h"
 
 /**
  * @brief Arm Stepper motor control node using Active Object pattern.
@@ -27,7 +27,6 @@ private:
     
     float lastSavedPosition; // Last position written to NVS (to debounce saves)
     
-    Preferences preferences;
     
 public:
     ArmNode();
