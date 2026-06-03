@@ -116,6 +116,8 @@ void MotorNode::hwUpdate() {
     if (armTelQueue != NULL && xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
         armStepPos = (int)armTel.currentPosition;
         armCalStart = armTel.posOut;  // Use posOut as the "start" position for interlock
+        armBufferPos = armTel.posBuffer;
+        armInPos = armTel.posIn;
     }
     
     // Unlock motor if collision was cleared (not applicable anymore but kept for safety)
@@ -187,22 +189,33 @@ void MotorNode::hwUpdate() {
         float deltaPos = (1.372e-6f * (float)targetSpeed * (float)TASK_UPDATE_INTERVAL_MS);
         currentPosition += deltaPos;
         
-        // Calculate effective bottom limit (interlock with arm position)
+        // Calculate effective bottom limit
         bool effectiveBotSet = limitSet[0];
         float effectiveLimBot = limits[0];
         
-        // Very basic interlock: If arm is not at Start (i.e. it's swung out), block going below Mid.
-        // The user specifies start and center. If current != start, we assume it's out.
-        bool swungOut = (armCalStart != -1) && (abs(armStepPos - armCalStart) > 500); 
+        // Interlock Option A: If Arm is between Buffer and Tip, block going below Mid.
+        bool swungOut = false;
+        if (armCalStart != -1 && armBufferPos != -1) {
+            int distToCurrent = abs(armStepPos - armCalStart);
+            int distToBuffer = abs(armBufferPos - armCalStart);
+            if (distToCurrent > distToBuffer) {
+                swungOut = true;
+            }
+        } else {
+            // Fallback if Buffer is not set, use old 500 step rule
+            swungOut = (armCalStart != -1) && (abs(armStepPos - armCalStart) > 500); 
+        } 
+        bool usingMidAsBot = false;
         
         if (swungOut) {
             if (limitSet[1]) {
                 effectiveBotSet = true;
                 effectiveLimBot = limits[1];
+                usingMidAsBot = true;
             } else if (targetSpeed < 0) {
                 // Block ALL downward movement if swung out and Mid isn't set
                 targetSpeed = 0;
-                LCD_setMessage("Arm Out: Mid Not Set!");
+                LCD_setMessage("Arm Out: Mid Not Set");
                 ESP_LOGW(TAG, "Blocked downward motion: arm out, mid limit not set");
             }
         }
@@ -212,7 +225,11 @@ void MotorNode::hwUpdate() {
             float distToBot = currentPosition - effectiveLimBot;
             if (distToBot <= 0.0f) {
                 targetSpeed = 0;
-                LCD_setMessage("Bottom Reached");
+                if (usingMidAsBot) {
+                    LCD_setMessage("Mid Reached(ArmOut)");
+                } else {
+                    LCD_setMessage("Bottom Reached");
+                }
             } else if (distToBot < 5.0f) {
                 // Deceleration zone: taper speed linearly
                 int minSpeed = 1000;

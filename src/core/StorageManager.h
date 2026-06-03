@@ -33,6 +33,8 @@ public:
     static void saveArmPosOut(int pos);
     static void saveArmPosIn(int pos);
     static void loadArmCalibration(int &posOut, int &posIn);
+    static void saveArmPosBuffer(int pos);
+    static int loadArmPosBuffer();
     static void saveArmPosition(float pos);
     static float loadArmPosition();
     static void saveArmJogSpeed(int speed);

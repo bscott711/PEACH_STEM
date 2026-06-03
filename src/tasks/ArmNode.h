@@ -20,6 +20,7 @@ private:
     int targetSpeed;         // Current velocity command
     
     int posOut;              // Calibrated "Out" position in steps (-1 = unset)
+    int posBuffer;           // Calibrated "Buffer" position in steps (-1 = unset)
     int posIn;               // Calibrated "In" position in steps (-1 = unset)
     
     bool isTrackingTarget;   // True when driving to a target
@@ -43,6 +44,7 @@ public:
     bool jog(float relativeSteps);
     bool setTarget(float percent, int targetSpeed = 5000);
     bool setPosOut();
+    bool setPosBuffer();
     bool setPosIn();
     bool clearCal();
 };

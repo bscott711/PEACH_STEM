@@ -13,6 +13,7 @@ enum class ArmCmdAction {
     SET_SPEED,       // Jog velocity (encoder turning)
     STOP,            // Immediate halt (encoder stopped turning)
     SET_POS_OUT,     // Save current physical position as "Out"
+    SET_POS_BUFFER,  // Save current physical position as "Buffer"
     SET_POS_IN,      // Save current physical position as "In"
     CLEAR_CAL,       // Clear both calibration points
     JOG              // Jog target by relative steps
@@ -28,6 +29,7 @@ struct ArmTelemetry {
     float currentPosition;   // Actual physical step position
     float targetPosition;    // Current target
     int posOut;              // Calibrated "Out" position (-1 if not set)
+    int posBuffer;           // Calibrated "Buffer" position (-1 if not set)
     int posIn;               // Calibrated "In" position (-1 if not set)
     bool isMoving;           // True if motor is actively running
 };

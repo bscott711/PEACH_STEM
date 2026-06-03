@@ -337,7 +337,7 @@ static void draw_buttonStatus(const UIData& data) {
 }
 
 static const char* s4Level0Names[] = {"Arm", "Act", "Z", "Auto"};
-static const char* s4ArmSubNames[] = {"Tip", "Clr", "JogSpd", "GoSpd", "Back"};
+static const char* s4ArmSubNames[] = {"Tip", "Buf", "Clr", "JogSpd", "GoSpd", "Back"};
 static const char* s4PosSubNames[] = {"Top", "Mid", "Bot", "JogSpd", "GoSpd", "Back"};
 
 static void draw_encoderStatus(const UIData& data) {
@@ -449,11 +449,18 @@ static void draw_encoderStatus(const UIData& data) {
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Tip:%d", axisName, data.armPosIn);
           else
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Tip:--", axisName);
+        } else if (data.s4SubMenu == S4_ARM_BUFFER) {
+          if (data.armPosBuffer != -1) {
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Buf:%d", axisName, data.armPosBuffer);
+          } else {
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Buf:--", axisName);
+          }
         } else if (data.s4SubMenu == S4_ARM_CLEAR) {
-          if (data.armPosOut != -1)
+          if (data.armPosOut != -1) {
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Clr:%d", axisName, data.armPosOut);
-          else
+          } else {
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Clr:--", axisName);
+          }
         } else if (data.s4SubMenu == S4_ARM_JOG_SPD) {
           snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.armJogSpeed, data.s4InSpeedEdit ? "*" : "");
         } else if (data.s4SubMenu == S4_ARM_GO_SPD) {

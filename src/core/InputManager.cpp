@@ -89,6 +89,7 @@ void InputManager::populateUIData(UIData& data) {
     if (xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
         data.armPosition = armTel.currentPosition;
         data.armPosOut = armTel.posOut;
+        data.armPosBuffer = armTel.posBuffer;
         data.armPosIn = armTel.posIn;
     }
 
@@ -310,10 +311,13 @@ void InputManager::handleMenuEncoder() {
 
   // --- Read telemetry for position operations ---
   ArmTelemetry armTel;
-  int armPosOut = -1, armPosIn = -1;
+  int armPosOut = -1;
+  int armPosBuffer = -1;
+  int armPosIn = -1;
   float armCurrentPos = 0;
-  if (xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
+  if (armTelQueue != NULL && xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
     armPosOut = armTel.posOut;
+    armPosBuffer = armTel.posBuffer;
     armPosIn = armTel.posIn;
     armCurrentPos = armTel.currentPosition;
   }
@@ -501,6 +505,14 @@ void InputManager::handleMenuEncoder() {
       if (item == S4_ARM_TIP) {
         g_armNode.setTarget(100.0f, systemState.armGoSpeed);
         LCD_setMessage("Arm: Go Tip");
+      } else if (item == S4_ARM_BUFFER) {
+        if (armPosBuffer == -1) {
+          LCD_setMessage("Arm: Buf Not Set");
+          return;
+        }
+        float percent = 100.0f * (float)(armPosBuffer - armPosOut) / (float)(armPosIn - armPosOut);
+        g_armNode.setTarget(percent, systemState.armGoSpeed);
+        LCD_setMessage("Arm: Go Buffer");
       } else if (item == S4_ARM_CLEAR) {
         g_armNode.setTarget(0.0f, systemState.armGoSpeed);
         LCD_setMessage("Arm: Go Clear");
@@ -538,6 +550,10 @@ void InputManager::handleMenuEncoder() {
         g_armNode.setPosIn();
         LCD_setMessage("Arm: Tip Set");
         printf("Arm Tip (posIn) set at current position\n");
+      } else if (item == S4_ARM_BUFFER) {
+        g_armNode.setPosBuffer();
+        LCD_setMessage("Arm: Buffer Set");
+        printf("Arm Buffer (posBuffer) set at current position\n");
       } else if (item == S4_ARM_CLEAR) {
         g_armNode.setPosOut();
         LCD_setMessage("Arm: Clear Set");

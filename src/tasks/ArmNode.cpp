@@ -24,13 +24,14 @@ void ArmNode::hwInit() {
     
     // Open NVS namespace
     StorageManager::loadArmCalibration(posOut, posIn);
+    posBuffer = StorageManager::loadArmPosBuffer();
     float lastPos = StorageManager::loadArmPosition();
     
     // Set stepper to last known position immediately
     currentPosition = lastPos;
     lastSavedPosition = lastPos;
     
-    ESP_LOGI(TAG, "Loaded calibration: Out=%d, In=%d, Pos=%.1f", posOut, posIn, lastPos);
+    ESP_LOGI(TAG, "Loaded calibration: Out=%d, Buf=%d, In=%d, Pos=%.1f", posOut, posBuffer, posIn, lastPos);
 }
 
 void ArmNode::processCommand(const ArmCommand& cmd) {
@@ -75,6 +76,12 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             ESP_LOGI(TAG, "Arm posOut set to %d", posOut);
             break;
             
+        case ArmCmdAction::SET_POS_BUFFER:
+            posBuffer = (int)currentPosition;
+            StorageManager::saveArmPosBuffer(posBuffer);
+            ESP_LOGI(TAG, "Arm posBuffer set to %d", posBuffer);
+            break;
+            
         case ArmCmdAction::SET_POS_IN:
             posIn = (int)currentPosition;
             StorageManager::saveArmPosIn(posIn);
@@ -83,8 +90,10 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             
         case ArmCmdAction::CLEAR_CAL:
             posOut = -1;
+            posBuffer = -1;
             posIn = -1;
             StorageManager::saveArmPosOut(-1);
+            StorageManager::saveArmPosBuffer(-1);
             StorageManager::saveArmPosIn(-1);
             ESP_LOGI(TAG, "Arm calibration cleared");
             break;
@@ -127,6 +136,7 @@ ArmTelemetry ArmNode::generateTelemetry() {
     tel.currentPosition = currentPosition;
     tel.targetPosition = isTrackingTarget ? targetTrackingAbsSteps : currentPosition;
     tel.posOut = posOut;
+    tel.posBuffer = posBuffer;
     tel.posIn = posIn;
     tel.isMoving = (targetSpeed != 0);
     return tel;
@@ -164,6 +174,13 @@ bool ArmNode::setTarget(float percent, int targetSpeed) {
 bool ArmNode::setPosOut() {
     ArmCommand cmd;
     cmd.action = ArmCmdAction::SET_POS_OUT;
+    cmd.value = 0.0f;
+    return sendCommand(cmd);
+}
+
+bool ArmNode::setPosBuffer() {
+    ArmCommand cmd;
+    cmd.action = ArmCmdAction::SET_POS_BUFFER;
     cmd.value = 0.0f;
     return sendCommand(cmd);
 }

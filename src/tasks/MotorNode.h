@@ -42,6 +42,8 @@ private:
     // Arm interlock data (read from telemetry)
     int armStepPos;
     int armCalStart;
+    int armBufferPos;
+    int armInPos;
     
 public:
     MotorNode();

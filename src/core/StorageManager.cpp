@@ -199,6 +199,22 @@ void StorageManager::saveArmPosIn(int pos) {
     }
 }
 
+void StorageManager::saveArmPosBuffer(int pos) {
+    if (prefs.begin("peach", false)) {
+        prefs.putInt("armBuf", pos);
+        prefs.end();
+    }
+}
+
+int StorageManager::loadArmPosBuffer() {
+    int pos = -1;
+    if (prefs.begin("peach", false)) {
+        pos = prefs.getInt("armBuf", -1);
+        prefs.end();
+    }
+    return pos;
+}
+
 void StorageManager::loadArmCalibration(int &posOut, int &posIn) {
     if (prefs.begin("peach", false)) {
         posOut = prefs.getInt("armPosO", -1);

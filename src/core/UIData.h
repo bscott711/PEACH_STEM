@@ -9,6 +9,7 @@ struct UIData {
     int armJogDir;        // -1, 0, +1
     float armPosition;    // Current absolute step position
     int armPosOut;        // Calibration: Out position (-1 = unset)
+    int armPosBuffer;     // Calibration: Buffer position (-1 = unset)
     int armPosIn;         // Calibration: In position (-1 = unset)
 
     // S2 Actuator — jog direction + position

@@ -10,11 +10,12 @@ enum S4Level0 { S4_ARM, S4_ACT, S4_Z, S4_AUTO, S4_LEVEL0_COUNT };
 
 // Sub-menu indices for Arm
 #define S4_ARM_TIP     0
-#define S4_ARM_CLEAR   1
-#define S4_ARM_JOG_SPD 2
-#define S4_ARM_GO_SPD  3
-#define S4_ARM_BACK    4
-#define S4_ARM_COUNT   5
+#define S4_ARM_BUFFER  1
+#define S4_ARM_CLEAR   2
+#define S4_ARM_JOG_SPD 3
+#define S4_ARM_GO_SPD  4
+#define S4_ARM_BACK    5
+#define S4_ARM_COUNT   6
 
 // Sub-menu indices for Actuator & Z (same layout)
 #define S4_POS_TOP     0
