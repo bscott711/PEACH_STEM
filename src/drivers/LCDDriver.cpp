@@ -379,8 +379,12 @@ static void draw_encoderStatus(const UIData& data) {
     snprintf(statusBuffer, sizeof(statusBuffer), "S2:SetBot:?");
   } else if (enc1MenuSelection == MENU_ACT_SPEED) {
     // Show current NVS slow speed setting
-    snprintf(statusBuffer, sizeof(statusBuffer), "S2:Spd:%03d",
-             SystemState::getInstance().actuatorSlowSpeed);
+    uint8_t speed = 128;
+    if (xSemaphoreTake(systemStateMutex, 0) == pdTRUE) {
+        speed = systemState.actuatorSlowSpeed;
+        xSemaphoreGive(systemStateMutex);
+    }
+    snprintf(statusBuffer, sizeof(statusBuffer), "S2:Spd:%03d", speed);
   }
   u8g2.drawStr(0, 26, statusBuffer);
 
@@ -421,12 +425,12 @@ static void draw_encoderStatus(const UIData& data) {
   }
 
   // Encoder 3: Autonomous/Menu (Hardware S4) — Row at y=38, text baseline y=44
-  if (enc3MenuSelection == MENU_MODE_IDLE) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S4:IDLE");
-  } else if (enc3MenuSelection == MENU_MODE_AUTO) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S4:START AUTO");
-  } else if (enc3MenuSelection == MENU_MODE_Z_CAL) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S4:CAL Z-AXIS");
+  if (enc3MenuSelection == MENU_AUTO) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S4:Cmd:Auto");
+  } else if (enc3MenuSelection == MENU_GOTO_TOP) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S4:Cmd:To Top");
+  } else if (enc3MenuSelection == MENU_GOTO_MID) {
+    snprintf(statusBuffer, sizeof(statusBuffer), "S4:Cmd:To Mid");
   } else if (enc3MenuSelection == MENU_GOTO_BOT) {
     snprintf(statusBuffer, sizeof(statusBuffer), "S4:Cmd:To Bot");
   }
