@@ -106,12 +106,6 @@ void autonomous_task(void *pvParameters) {
         }
 
         g_motorNode.setSpeed(0);
-
-        // Back-sync encoder 2 (motor) to 0
-        if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-          g_encoderState.position[2] = 0;
-          xSemaphoreGive(encoderStateMutex);
-        }
         stepComplete = true;
         break;
       }
@@ -144,12 +138,6 @@ void autonomous_task(void *pvParameters) {
         }
         
         g_actuatorNode.setTarget(targetPct, step.actuatorSpeed);
-
-        // UI Back-Sync: update encoder 1 so manual controls stay in sync
-        if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-          g_encoderState.position[1] = targetPct / ACTUATOR_STEP_PERCENT;
-          xSemaphoreGive(encoderStateMutex);
-        }
         
         // Wait until actuator reaches the target percentage
         bool posReached = false;
