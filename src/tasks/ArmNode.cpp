@@ -103,9 +103,12 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
 void ArmNode::hwUpdate() {
     if (isTrackingTarget) {
         float error = targetTrackingAbsSteps - currentPosition;
+        float stepsPerSec = (float)targetTrackingSpeed * 0.715f;
+        float expectedDeltaPos = stepsPerSec * ((float)TASK_UPDATE_INTERVAL_MS / 1000.0f);
         
-        // Constant velocity tracking
-        if (abs(error) < 5.0f) {
+        // Constant velocity tracking with exact clamping to prevent oscillation
+        if (abs(error) <= expectedDeltaPos * 1.5f + 1.0f) {
+            currentPosition = targetTrackingAbsSteps;
             targetSpeed = 0;
             isTrackingTarget = false;
         } else {

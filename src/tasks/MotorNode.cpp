@@ -198,7 +198,7 @@ void MotorNode::hwUpdate() {
         if (armCalStart != -1 && armBufferPos != -1) {
             int distToCurrent = abs(armStepPos - armCalStart);
             int distToBuffer = abs(armBufferPos - armCalStart);
-            if (distToCurrent > distToBuffer) {
+            if (distToCurrent > distToBuffer + 5) {
                 swungOut = true;
             }
         } else {
