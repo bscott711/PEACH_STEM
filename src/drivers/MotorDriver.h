@@ -2,14 +2,6 @@
 #include <TMC2209.h>
 #include "HardwareConfig.h"
 
-#define ENABLE_OPTICAL_ENDSTOPS 0
-
-#define MOTOR_MIN_SAFE_STEPS 0
-#define MOTOR_MAX_SAFE_STEPS 100000
-#define MOTOR_MAX_SAFE_ACCEL 4000
-#define RUN_CURRENT_PERCENT 100
-#define SERIAL_BAUD_RATE 115200
-
 class motorDriver {
 public:
   void begin(HardwareSerial &serial, TMC2209::SerialAddress address);
