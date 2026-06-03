@@ -83,7 +83,7 @@ static void draw_splashScreen() {
 
   // Small version tag
   u8g2.setFont(u8g2_font_tiny5_tf);
-  u8g2.drawStr(50, 62, "v2.0");
+  u8g2.drawStr(50, 62, "v3.0");
 
   u8g2.sendBuffer();
 }
@@ -121,35 +121,122 @@ void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool fai
   u8g2.sendBuffer();
 }
 
+// Deterministic hash function for organic but stable procedural generation
+static float hash_fn(int a, int b) {
+  float h = sinf(a * 12.9898f + b * 78.233f) * 43758.5453123f;
+  return h - floorf(h);
+}
+
+static float clamp(float val, float min, float max) {
+  if (val < min) return min;
+  if (val > max) return max;
+  return val;
+}
+
+// Recursive function to draw the tree dynamically
+static void drawBranch(int progress, float x, float y, float len, float angle, int depth, int pathIndex) {
+  const int maxDepth = 4; // Max depth 4 for 128x64 screen performance
+
+  // Calculate the timing for this specific depth
+  float startP, endP;
+  if (depth == 0) {
+    startP = 0; endP = 20;
+  } else {
+    float depthSlice = 30.0f / maxDepth;
+    startP = 20 + (depth - 1) * depthSlice;
+    endP = startP + depthSlice;
+  }
+
+  float growth = clamp((progress - startP) / (endP - startP), 0.0f, 1.0f);
+
+  if (growth > 0) {
+    float currentLen = len * growth;
+    float endX = x + currentLen * sinf(angle);
+    float endY = y - currentLen * cosf(angle);
+
+    // Draw the branch line
+    u8g2.drawLine((int)x, (int)y, (int)endX, (int)endY);
+
+    // --- STAGE 2: The Branches (20% - 50%) ---
+    if (depth < maxDepth && progress > endP) {
+      // Generate procedural but deterministic branch angles and lengths
+      float leftLenMod = 0.65f + hash_fn(pathIndex, 1) * 0.15f;
+      float rightLenMod = 0.65f + hash_fn(pathIndex, 2) * 0.15f;
+      float leftAngleMod = 0.25f + hash_fn(pathIndex, 3) * 0.3f;
+      float rightAngleMod = 0.25f + hash_fn(pathIndex, 4) * 0.3f;
+
+      // Spawn left and right children
+      drawBranch(progress, endX, endY, len * leftLenMod, angle - leftAngleMod, depth + 1, pathIndex * 2);
+      drawBranch(progress, endX, endY, len * rightLenMod, angle + rightAngleMod, depth + 1, pathIndex * 2 + 1);
+
+      // Occasionally spawn a middle branch for organic density
+      if (hash_fn(pathIndex, 5) > 0.6f) {
+         drawBranch(progress, endX, endY, len * 0.5f, angle + (hash_fn(pathIndex, 6) * 0.2f - 0.1f), depth + 1, pathIndex * 2 + 2);
+      }
+    }
+
+    // --- STAGE 3: The Leaves (50% - 80%) ---
+    if (depth >= 2) {
+      float leafStart = 50 + hash_fn(pathIndex, 7) * 15;
+      float leafEnd = leafStart + 15;
+      
+      float leafGrowth = clamp((progress - leafStart) / (leafEnd - leafStart), 0.0f, 1.0f);
+      
+      if (leafGrowth > 0) {
+        // Just draw a small circle for leaves on the OLED
+        int r = (int)(2.0f * leafGrowth);
+        if (r > 0) {
+            u8g2.drawDisc((int)endX, (int)endY, r);
+        }
+      }
+    }
+
+    // --- STAGE 4: The Peaches (80% - 100%) ---
+    if (depth == maxDepth && progress > 80) {
+      // Only spawn peaches on certain branches
+      if (hash_fn(pathIndex, 9) > 0.4f) {
+        float peachGrowth = clamp((progress - 80.0f) / 20.0f, 0.0f, 1.0f);
+        
+        if (peachGrowth > 0) {
+          int radius = (int)(5.0f * peachGrowth);
+          if (radius > 0) {
+              // Draw small peach body (circle with cleft line)
+              u8g2.drawDisc((int)endX, (int)endY, radius);
+              u8g2.setDrawColor(0);
+              u8g2.drawLine((int)endX, (int)(endY - radius), (int)endX, (int)(endY + radius - 1));
+              u8g2.setDrawColor(1);
+          }
+        }
+      }
+    }
+  }
+}
+
 void draw_otaScreen() {
   u8g2.clearBuffer();
 
-  // Premium Header
-  u8g2.setFont(u8g2_font_helvB08_tr);
-  u8g2.drawStr(16, 10, "FIRMWARE UPDATE");
-  u8g2.drawHLine(0, 14, 128);
-
-  // Status message
-  u8g2.setFont(u8g2_font_tiny5_tf);
-  const char* otaStatus = NetworkManager::getOTAStatus();
-  int statusWidth = strlen(otaStatus) * 4;
-  u8g2.drawStr((128 - statusWidth) / 2, 26, otaStatus);
-
-  // Progress Bar Frame
-  u8g2.drawFrame(10, 32, 108, 12);
-  
-  // Progress Bar Fill
   int otaProgress = NetworkManager::getOTAProgress();
-  int fillWidth = map(constrain(otaProgress, 0, 100), 0, 100, 0, 106);
-  if (fillWidth > 0) {
-    u8g2.drawBox(11, 33, fillWidth, 10);
-  }
+  const char* otaStatus = NetworkManager::getOTAStatus();
 
-  // Progress text (centered at bottom)
-  char progressStr[32];
-  snprintf(progressStr, sizeof(progressStr), "%d%% completed", otaProgress);
-  int textWidth = strlen(progressStr) * 4;
-  u8g2.drawStr((128 - textWidth) / 2, 56, progressStr);
+  // Draw the growing tree!
+  int startX = 64; // Center
+  int startY = 64; // Bottom of screen
+  float baseTrunkLength = 16.0f;
+  
+  drawBranch(otaProgress, startX, startY, baseTrunkLength, 0.0f, 0, 1);
+
+  // UI Overlay - Top Left
+  u8g2.setFont(u8g2_font_helvB08_tr);
+  u8g2.drawStr(0, 10, "SYS_OTA_UPDATE");
+  
+  u8g2.setFont(u8g2_font_helvB18_tr);
+  char progressStr[16];
+  snprintf(progressStr, sizeof(progressStr), "%d%%", otaProgress);
+  u8g2.drawStr(0, 30, progressStr);
+  
+  u8g2.setFont(u8g2_font_tiny5_tf);
+  u8g2.drawStr(0, 42, "Status:");
+  u8g2.drawStr(0, 52, otaStatus);
 
   u8g2.sendBuffer();
 }

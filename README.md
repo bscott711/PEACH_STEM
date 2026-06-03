@@ -28,7 +28,7 @@ PEACH_PIT is a multi-axis robotic control system designed for pick-and-drop oper
 ## Hardware Requirements
 
 - **Microcontroller**: ESP32 DevKit
-- **Motor Drivers**: 
+- **Motor Drivers**:
   - TMC2209 stepper motor driver
   - Servo driver (Adafruit Seesaw compatible)
 - **Display**: I2C OLED LCD
@@ -45,31 +45,35 @@ PEACH_PIT is a multi-axis robotic control system designed for pick-and-drop oper
 ### Setup
 
 1. Clone the repository:
+
 ```bash
 git clone https://gitlab.com/ericjohnson0987/robotic-cell-dropper.git
 cd robotic-cell-dropper
 ```
 
-2. Install PlatformIO dependencies:
+1. Install PlatformIO dependencies:
+
 ```bash
 pio install
 ```
 
-3. Configure upload port in `platformio.ini` if necessary
+1. Configure upload port in `platformio.ini` if necessary
 
-4. Build and upload:
+2. Build and upload:
+
 ```bash
 pio run --target upload
 ```
 
-5. Open serial monitor:
+1. Open serial monitor:
+
 ```bash
 pio device monitor
 ```
 
 ## Project Structure
 
-```
+```bash
 PEACH_PIT/
 ├── src/
 │   ├── main.cpp              # Entry point and task initialization
@@ -141,7 +145,7 @@ Each sequence step can be interrupted by E-STOP events, ensuring safe operation.
 Key configuration parameters in `controller.h`:
 
 | Parameter | Default | Description |
-|-----------|---------|-------------|
+| ----------- | --------- | ----------- |
 | `MOTOR_SPEED_SCALE_FACTOR` | 333 | Speed scaling for motor calculations |
 | `AUTO_SEQUENCE_SPEED` | 120000 | Default speed for autonomous sequences |
 | `AUTO_SEQUENCE_DURATION_MS` | 15000 | Duration for auto sequence moves |
@@ -162,6 +166,7 @@ FreeRTOS task priorities (higher number = higher priority):
 ## Safety Considerations
 
 ⚠️ **E-STOP**: The system supports emergency stop via event flags. When triggered:
+
 - All autonomous sequences halt immediately
 - Motor motion is suspended
 - System awaits manual reset
@@ -223,4 +228,4 @@ This project is proprietary software developed for laboratory automation.
 
 ---
 
-*Last updated: Based on commit "refactor: replace hardcoded autonomous sequence with a dynamic, interruptible step-based engine supporting E-STOP and UI state synchronization."*
+**Last updated**: Based on commit "refactor: replace hardcoded autonomous sequence with a dynamic, interruptible step-based engine supporting E-STOP and UI state synchronization."
