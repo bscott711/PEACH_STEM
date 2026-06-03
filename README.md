@@ -6,23 +6,23 @@ An ESP32-based embedded control system for automated laboratory cell handling wi
 
 PEACH_PIT is a multi-axis robotic control system designed for pick-and-drop operations in laboratory environments. Built on the ESP32 platform with FreeRTOS, it provides deterministic real-time control of stepper motors, servos, and linear actuators.
 
-**Current Branch Status**: Refactored autonomous sequence engine with dynamic, interruptible step-based execution supporting E-STOP and UI state synchronization.
+**Current Branch Status**: v3.0 - Fully refactored to an Active Object architecture with lock-free queues, dynamic NVS limit mapping for autonomous sequences, and adjustable UI speeds.
 
 ## Features
 
 - **Multi-task FreeRTOS Architecture**: Concurrent task management for motor control, encoder reading, LCD display, servo positioning, and actuator control
-- **Dynamic Sequence Engine**: Interruptible step-based autonomous operation with E-STOP support
+- **Dynamic Sequence Engine**: Interruptible step-based autonomous operation with E-STOP support and dynamic NVS limit lookups.
 - **Precision Motion Control**:
-  - Stepper motor with TMC2209 driver and StallGuard stall detection
-  - Servo motor with NVS-persisted calibration
-  - Linear actuator with position tracking
-- **Real-time Feedback**: Quadrature encoder integration for closed-loop position control
-- **User Interface**: OLED LCD display (U8g2) for status monitoring and menu navigation
+  - Stepper motor with TMC2209 driver, optical endstops, and StallGuard
+  - Servo motor (Arm) with NVS-persisted calibration targets
+  - Linear actuator with position tracking and adjustable PWM speeds
+- **Real-time Feedback**: Quadrature encoder integration for closed-loop position control and UI manipulation
+- **User Interface**: OLED LCD display (U8g2) for status monitoring, limit setting, and speed adjustments
 - **Safety Features**:
   - Emergency stop (E-STOP) with immediate sequence interruption
-  - Collision detection with timestamp logging
+  - Interlocks preventing arm collisions with microscopes
   - Homing routine with limit detection
-- **State Persistence**: Non-volatile storage (NVS) for system state and servo calibration
+- **State Persistence**: Non-volatile storage (NVS) for physical limits (Z and Actuator) and custom sequence speeds.
 - **StallGuard Live Tuning**: Real-time threshold adjustment for optimal motor performance
 
 ## Hardware Requirements
@@ -73,19 +73,21 @@ pio device monitor
 PEACH_PIT/
 ├── src/
 │   ├── main.cpp              # Entry point and task initialization
-│   ├── controller.h          # System state, configuration, and sequence definitions
-│   ├── drivers/              # Hardware abstraction layer
-│   │   ├── EncoderDriver.*   # Quadrature encoder interface
-│   │   ├── HBridgeDriver.*   # Motor bridge control
-│   │   ├── LCDDriver.*       # OLED display driver
-│   │   ├── MotorDriver.*     # Stepper motor control (TMC2209)
-│   │   └── ServoDriver.*     # Servo motor control
-│   └── tasks/                # FreeRTOS task implementations
-│       ├── encoder_task.*    # Encoder reading task
-│       ├── motor_task.*      # Motor control task
-│       ├── LCD_task.*        # Display refresh task
-│       ├── servo_task.*      # Servo positioning task
-│       └── actuator_task.*   # Linear actuator control
+│   ├── messaging.h           # System-wide structs and lock-free queue definitions
+│   ├── core/                 # Core system managers
+│   │   ├── InputManager.*    # UI and encoder interaction logic
+│   │   ├── SequenceEngine.*  # Autonomous 10-step sequence runner
+│   │   ├── StorageManager.*  # NVS wrapper for saving/loading limits
+│   │   ├── SystemState.h     # Global UI state enum
+│   │   └── NetworkManager.*  # OTA updates and WiFi handling
+│   ├── tasks/                # FreeRTOS task implementations (Active Objects)
+│   │   ├── ActiveMotionNode.h# Base template for all motion nodes
+│   │   ├── ActuatorNode.*    # Linear actuator control loop
+│   │   ├── ArmNode.*         # Servo motor arm control loop
+│   │   └── MotorNode.*       # Stepper motor Z-axis control loop
+│   └── drivers/              # Hardware abstraction layer
+│       ├── EncoderDriver.*   # Quadrature encoder interface
+│       ├── LCDDriver.*       # OLED display driver
 ├── include/                  # Public headers
 ├── lib/                      # External libraries
 ├── test/                     # Unit tests
@@ -106,15 +108,23 @@ The controller operates in three primary modes:
 
 ### Sequence Engine
 
-The autonomous sequence engine uses a step-based approach defined in `controller.h`:
+The autonomous sequence engine uses a step-based approach defined in `SystemState.h`:
 
 ```cpp
 enum SequenceAction {
-  SEQ_MOVE_Z,        // Move Z-axis to target position
-  SEQ_MOVE_SERVO,    // Set servo to target percent
-  SEQ_MOVE_ACTUATOR, // Set actuator to target percent
+  SEQ_MOVE_Z,        // Move Z-axis to target limit index (0=Bot, 1=Mid, 2=Top)
+  SEQ_MOVE_ARM,      // Move Arm (0-100%)
+  SEQ_MOVE_ACTUATOR, // Set actuator to target limit index (0,1,2) with custom speed
   SEQ_WAIT_MS,       // Interruptible delay
   SEQ_WAIT_USER      // Wait for user button press
+};
+
+struct SequenceStep {
+  SequenceAction action;
+  int target;          // Percent, ms, or limitIndex depending on action
+  int limitIdx;        // Z-position limit index
+  int actuatorSpeed;   // Actuator PWM speed (0-255)
+  const char *message; // LCD message
 };
 ```
 
@@ -204,12 +214,12 @@ This project is proprietary software developed for laboratory automation.
 
 **Active Development** - Current focus on refining the autonomous sequence engine and improving E-STOP response times.
 
-### Recent Changes
+### Recent Changes (v3.0)
 
-- Replaced hardcoded autonomous sequences with dynamic step-based engine
-- Added interruptible sequence execution with E-STOP support
-- Implemented UI state synchronization across all tasks
-- Enhanced collision detection and logging
+- **Architecture Refactor**: Replaced shared-memory `controller` blob with `ActiveMotionNode` architecture. Tasks communicate exclusively via lock-free FreeRTOS queues (`messaging.h`).
+- **Data-Driven Subsystems**: Extracted `StorageManager`, `InputManager`, and `SequenceEngine`.
+- **Dynamic Limits**: `SequenceEngine` now dynamically looks up calibrated physical positions for the Z-Axis and Actuator at runtime, eliminating hardcoded depths.
+- **Adjustable Speeds**: Actuator slow dispense speed is now configurable via the physical Encoder UI and saved to NVS.
 
 ---
 
