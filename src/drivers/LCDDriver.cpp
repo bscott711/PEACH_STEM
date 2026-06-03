@@ -336,171 +336,161 @@ static void draw_buttonStatus(const UIData& data) {
   }
 }
 
+static const char* s4Level0Names[] = {"Arm", "Act", "Z", "Auto"};
+static const char* s4ArmSubNames[] = {"Tip", "Clr", "Back"};
+static const char* s4PosSubNames[] = {"Top", "Mid", "Bot", "Back"};
+
 static void draw_encoderStatus(const UIData& data) {
   char statusBuffer[32];
 
-  int armTarget = data.armTarget;
-  int armActual = data.armActual;
-  int armPosOut = data.armPosOut;
-  int armPosIn = data.armPosIn;
+  // Direction arrow character helper
+  auto dirChar = [](int dir) -> char {
+    if (dir > 0) return '>';
+    if (dir < 0) return '<';
+    return '-';
+  };
 
-  int actuatorTarget = data.actuatorTarget;
-  int actuatorActual = data.actuatorActual;
-
-  int motorTarget = data.motorTargetSpeed;
-  float currentPos = data.motorPos;
-
-  DeviceMode currentMode = data.currentMode;
-  Enc3Menu enc3MenuSelection = data.enc3Menu;
-  Enc1Menu enc1MenuSelection = data.enc1Menu;
-
-  // Encoder 0: Arm (Hardware S1) — Row at y=11, text baseline y=17
-  // We don't have access to controller's internal calStep, so we just show Arm data
-  if (armPosOut != -1 && armPosIn != -1) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%03d%%", armTarget);
-  } else {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:UNCAL");
-  }
-  u8g2.drawStr(0, 17, statusBuffer);
-
-  // Live sliding dot: track from x=72 to x=124, y centered at 14
-  const int trackL = 72, trackR = 124, trackY = 14;
-  u8g2.drawHLine(trackL, trackY, trackR - trackL);
-
-  // Only draw track if calibrated
-  if (armPosOut != -1 && armPosIn != -1 && armPosIn != armPosOut) {
-    int startX = trackL;
-    int centerX = trackR;
-    
-    u8g2.drawVLine(startX, trackY - 2, 5);
-    u8g2.drawVLine(centerX, trackY - 2, 5);
-
-    int dotX = map(armActual, armPosOut, armPosIn, trackL, trackR);
-    dotX = constrain(dotX, trackL, trackR);
-    u8g2.drawDisc(dotX, trackY, 2);
-  } else {
-    // Uncalibrated: just show a dot bouncing around or center it
-    u8g2.drawDisc((trackL+trackR)/2, trackY, 2);
-  }
-
-  // Encoder 1: Actuator (Hardware S2) — Row at y=20, text baseline y=26
-  if (enc1MenuSelection == MENU_ACT_MAN) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S2:Man:%03d%%",
-             actuatorTarget);
-  } else if (enc1MenuSelection == MENU_ACT_GOTO_TOP) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S2:SetTop:?");
-  } else if (enc1MenuSelection == MENU_ACT_GOTO_MID) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S2:SetMid:?");
-  } else if (enc1MenuSelection == MENU_ACT_GOTO_BOT) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S2:SetBot:?");
-  } else if (enc1MenuSelection == MENU_ACT_SPEED) {
-    // Show current NVS slow speed setting
-    uint8_t speed = 128;
-    if (xSemaphoreTake(systemStateMutex, 0) == pdTRUE) {
-        speed = systemState.actuatorSlowSpeed;
-        xSemaphoreGive(systemStateMutex);
-    }
-    snprintf(statusBuffer, sizeof(statusBuffer), "S2:Spd:%03d", speed);
-  }
-  u8g2.drawStr(0, 26, statusBuffer);
-
-  // Fill bar: frame from x=72 to x=124, height 7
+  // ---- S1: Arm (y=11, text baseline y=17) ----
   {
+    char dc = dirChar(data.armJogDir);
+    if (data.armPosOut != -1 && data.armPosIn != -1) {
+      snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%c", dc);
+    } else {
+      snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%c NC", dc);
+    }
+    u8g2.drawStr(0, 17, statusBuffer);
+
+    // Sliding dot track: x=72 to x=124, y=14
+    const int trackL = 72, trackR = 124, trackY = 14;
+    u8g2.drawHLine(trackL, trackY, trackR - trackL);
+
+    if (data.armPosOut != -1 && data.armPosIn != -1 && data.armPosIn != data.armPosOut) {
+      u8g2.drawVLine(trackL, trackY - 2, 5);
+      u8g2.drawVLine(trackR, trackY - 2, 5);
+      int dotX = map((int)data.armPosition, data.armPosOut, data.armPosIn, trackL, trackR);
+      dotX = constrain(dotX, trackL, trackR);
+      u8g2.drawDisc(dotX, trackY, 2);
+    } else {
+      u8g2.drawDisc((trackL + trackR) / 2, trackY, 2);
+    }
+  }
+
+  // ---- S2: Actuator (y=20, text baseline y=26) ----
+  {
+    char dc = dirChar(data.actJogDir);
+    snprintf(statusBuffer, sizeof(statusBuffer), "S2:Act:%c %d%%", dc, data.actuatorPercent);
+    u8g2.drawStr(0, 26, statusBuffer);
+
+    // Fill bar: frame from x=72 to x=124, height 7
     const int barL = 72, barW = 52, barY = 20, barH = 7;
     u8g2.drawFrame(barL, barY, barW, barH);
-    int fillW = map(constrain(actuatorActual, 0, 100), 0, 100, 0, barW - 2);
+    int fillW = map(constrain(data.actuatorPercent, 0, 100), 0, 100, 0, barW - 2);
     if (fillW > 0) {
       u8g2.drawBox(barL + 1, barY + 1, fillW, barH - 2);
     }
   }
 
-  // Encoder 2: Motor (Hardware S3) — Row at y=29, text baseline y=35
-  int step = motorTarget / MOTOR_SPEED_SCALE_FACTOR;
-  snprintf(statusBuffer, sizeof(statusBuffer), "S3:Mot:%+03d", step);
-  u8g2.drawStr(0, 35, statusBuffer);
-
-  // Bidirectional speed bar: frame from x=72 to x=124, height 7, center line
+  // ---- S3: Z Motor (y=29, text baseline y=35) ----
   {
-    const int barL = 72, barW = 52, barY = 29, barH = 7;
-    int centerX = barL + barW / 2;
-    u8g2.drawFrame(barL, barY, barW, barH);
-    u8g2.drawVLine(centerX, barY, barH);
+    char dc = dirChar(data.zJogDir);
+    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Z:%c", dc);
+    u8g2.drawStr(0, 35, statusBuffer);
 
-    int clicks = constrain(abs(step), 0, 15);
-    int fillW = map(clicks, 0, 15, 0, (barW / 2) - 1);
+    // Position track with limit ticks (x=72 to x=124, y=32)
+    bool botSet = data.motorLimitSet[0];
+    bool topSet = data.motorLimitSet[2];
+    float minLim = data.motorLimits[0];
+    float maxLim = data.motorLimits[2];
 
-    if (motorTarget > 0) {
-      u8g2.drawBox(centerX + 1, barY + 1, fillW, barH - 2);
-    } else if (motorTarget < 0) {
-      u8g2.drawBox(centerX - fillW, barY + 1, fillW, barH - 2);
-    }
-
-    if (motorTarget == 0 && currentMode != IDLE) {
-      u8g2.drawStr(centerX + 2, 35, "[P]");
-    }
-  }
-
-  // Encoder 3: Autonomous/Menu (Hardware S4) — Row at y=38, text baseline y=44
-  if (enc3MenuSelection == MENU_AUTO) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S4:Cmd:Auto");
-  } else if (enc3MenuSelection == MENU_GOTO_TOP) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S4:Cmd:To Top");
-  } else if (enc3MenuSelection == MENU_GOTO_MID) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S4:Cmd:To Mid");
-  } else if (enc3MenuSelection == MENU_GOTO_BOT) {
-    snprintf(statusBuffer, sizeof(statusBuffer), "S4:Cmd:To Bot");
-  }
-  u8g2.drawStr(0, 44, statusBuffer);
-
-  bool botSet = data.motorLimitSet[0];
-  bool topSet = data.motorLimitSet[2];
-  float minLim = data.motorLimits[0];
-  float maxLim = data.motorLimits[2];
-
-  if (botSet && topSet && maxLim > minLim) {
-    // Sliding dot UI: track from x=72 to x=124, y centered at 41
-    const int trackL = 72, trackR = 124, trackY = 41;
+    const int trackL = 72, trackR = 124, trackY = 32;
     u8g2.drawHLine(trackL, trackY, trackR - trackL);
 
-    float range = maxLim - minLim;
-    if (range > 0.01f) {
-      for (int i = 0; i < 3; i++) {
-        if (data.motorLimitSet[i]) {
-          float val = data.motorLimits[i];
-          if (val < minLim)
-            val = minLim;
-          if (val > maxLim)
-            val = maxLim;
-          int tickX =
-              trackL + (int)(((val - minLim) / range) * (trackR - trackL));
-          u8g2.drawVLine(tickX, trackY - 2, 5);
+    if (botSet && topSet && maxLim > minLim) {
+      float range = maxLim - minLim;
+      if (range > 0.01f) {
+        for (int i = 0; i < 3; i++) {
+          if (data.motorLimitSet[i]) {
+            float val = data.motorLimits[i];
+            if (val < minLim) val = minLim;
+            if (val > maxLim) val = maxLim;
+            int tickX = trackL + (int)(((val - minLim) / range) * (trackR - trackL));
+            u8g2.drawVLine(tickX, trackY - 2, 5);
+          }
         }
+
+        float cPos = data.motorPos;
+        if (cPos < minLim) cPos = minLim;
+        if (cPos > maxLim) cPos = maxLim;
+        int dotX = trackL + (int)(((cPos - minLim) / range) * (trackR - trackL));
+        u8g2.drawDisc(dotX, trackY, 2);
       }
-
-      float constrainedPos = currentPos;
-      if (constrainedPos < minLim)
-        constrainedPos = minLim;
-      if (constrainedPos > maxLim)
-        constrainedPos = maxLim;
-
-      int dotX = trackL +
-                 (int)(((constrainedPos - minLim) / range) * (trackR - trackL));
-      u8g2.drawDisc(dotX, trackY, 2);
+    } else {
+      u8g2.drawDisc((trackL + trackR) / 2, trackY, 2);
     }
   }
 
-#if 0
-  // Encoder 2: Motor (Hardware S3) — Row at y=29, text baseline y=35
-  snprintf(statusBuffer, sizeof(statusBuffer), "S3:Z-Spd:%d", motorTarget);
-  u8g2.drawStr(0, 35, statusBuffer);
-  if (isHoming)
-    u8g2.drawStr(72, 44, "[H]");
-  else if (sgDiagMode)
-    u8g2.drawStr(72, 44, "[D]");
-  else if (triggerHoming)
-    u8g2.drawStr(72, 44, "[*]");
-#endif
+  // ---- S4: Menu (y=38, text baseline y=44) ----
+  {
+    if (!data.s4InSubMenu) {
+      // Level 0: axis selection
+      snprintf(statusBuffer, sizeof(statusBuffer), "S4:>%s", s4Level0Names[data.s4Menu]);
+    } else {
+      // Level 1: sub-menu with position values
+      const char* axisName = s4Level0Names[data.s4Menu];
+      const char* itemName = "";
+
+      if (data.s4Menu == S4_ARM) {
+        itemName = s4ArmSubNames[data.s4SubMenu];
+
+        if (data.s4SubMenu == S4_ARM_BACK) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Back", axisName);
+        } else if (data.s4SubMenu == S4_ARM_TIP) {
+          if (data.armPosIn != -1)
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Tip:%d", axisName, data.armPosIn);
+          else
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Tip:--", axisName);
+        } else if (data.s4SubMenu == S4_ARM_CLEAR) {
+          if (data.armPosOut != -1)
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Clr:%d", axisName, data.armPosOut);
+          else
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Clr:--", axisName);
+        }
+      } else if (data.s4Menu == S4_ACT) {
+        int idx = data.s4SubMenu;
+        itemName = s4PosSubNames[idx];
+        if (idx == S4_POS_BACK) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Back", axisName);
+        } else {
+          int limitIdx = (idx == S4_POS_TOP) ? 2 : ((idx == S4_POS_BOT) ? 0 : 1);
+          if (data.actuatorLimitSet[limitIdx]) {
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:%d%%", axisName, itemName, data.actuatorLimits[limitIdx]);
+          } else {
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:--", axisName, itemName);
+          }
+        }
+      } else if (data.s4Menu == S4_Z) {
+        int idx = data.s4SubMenu;
+        itemName = s4PosSubNames[idx];
+        if (idx == S4_POS_BACK) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Back", axisName);
+        } else {
+          int limitIdx = (idx == S4_POS_TOP) ? 2 : ((idx == S4_POS_BOT) ? 0 : 1);
+          if (data.motorLimitSet[limitIdx]) {
+            int whole = (int)data.motorLimits[limitIdx];
+            int frac = abs((int)(data.motorLimits[limitIdx] * 10) % 10);
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:%d.%d", axisName, itemName, whole, frac);
+          } else {
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:--", axisName, itemName);
+          }
+        }
+      }
+    }
+    u8g2.drawStr(0, 44, statusBuffer);
+  }
 }
+
+
+
 
 static void draw_actionMessage(const UIData& data) {
   bool pending = false;

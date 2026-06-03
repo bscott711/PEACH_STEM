@@ -32,8 +32,9 @@ SemaphoreHandle_t encoderStateMutex;
 EventGroupHandle_t controlEvents;
 
 SystemState systemState = {.mode = IDLE,
-                           .enc1MenuSelection = MENU_ACT_MAN,
-                           .enc3MenuSelection = MENU_AUTO,
+                           .s4Menu = S4_ARM,
+                           .s4SubMenu = 0,
+                           .s4InSubMenu = false,
                            .collisionDetected = false,
                            .collisionTimestamp = 0,
                            .actuatorSlowSpeed = 128};
@@ -48,8 +49,9 @@ void initSystemState() {
   // Initialize minimal state - subsystem state is managed by Active Nodes
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
     systemState.mode = IDLE;
-    systemState.enc1MenuSelection = MENU_ACT_MAN;
-    systemState.enc3MenuSelection = MENU_AUTO;
+    systemState.s4Menu = S4_ARM;
+    systemState.s4SubMenu = 0;
+    systemState.s4InSubMenu = false;
     systemState.collisionDetected = false;
     systemState.actuatorSlowSpeed = 128;
     xSemaphoreGive(systemStateMutex);

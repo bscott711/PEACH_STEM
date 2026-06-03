@@ -15,6 +15,18 @@ extern ArmNode g_armNode;
 extern ActuatorNode g_actuatorNode;
 extern MotorNode g_motorNode;
 
+// ============================================================================
+// Jog direction tracking (file-scoped for populateUIData access)
+// ============================================================================
+static int g_jogDirArm = 0;       // -1, 0, +1
+static int g_jogDirActuator = 0;
+static int g_jogDirMotor = 0;
+
+// Default jog speeds per axis
+static const int JOG_SPEED_ARM = 5000;     // steps/s for arm stepper
+static const int JOG_SPEED_Z = 4995;       // steps/s for Z stepper
+static const int JOG_PWM_ACTUATOR = 255;   // PWM duty for actuator H-bridge
+
 void InputManager::init() {
   if (xSemaphoreTake(encoderStateMutex, portMAX_DELAY) == pdTRUE) {
     g_encoderState.position[0] = 0;
@@ -47,37 +59,47 @@ void InputManager::process() {
     handleArmEncoder();
     handleActuatorEncoder();
     handleMotorEncoder();
-    handleAutonomousEncoder();
+    handleMenuEncoder();
 }
 
 void InputManager::populateUIData(UIData& data) {
     if (xSemaphoreTake(systemStateMutex, 0) == pdTRUE) {
         data.currentMode = systemState.mode;
-        data.enc1Menu = systemState.enc1MenuSelection;
-        data.enc3Menu = systemState.enc3MenuSelection;
+        data.s4Menu = systemState.s4Menu;
+        data.s4SubMenu = systemState.s4SubMenu;
+        data.s4InSubMenu = systemState.s4InSubMenu;
         xSemaphoreGive(systemStateMutex);
     }
     
     EventBits_t events = xEventGroupGetBits(controlEvents);
     data.isAutoRunning = (events & BIT_AUTO_RUNNING) != 0;
 
+    // Jog direction indicators
+    data.armJogDir = g_jogDirArm;
+    data.actJogDir = g_jogDirActuator;
+    data.zJogDir = g_jogDirMotor;
+
+    // Arm telemetry
     ArmTelemetry armTel;
     if (xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
-        data.armTarget = (int)armTel.targetPosition;
-        data.armActual = (int)armTel.currentPosition;
+        data.armPosition = armTel.currentPosition;
         data.armPosOut = armTel.posOut;
         data.armPosIn = armTel.posIn;
     }
 
+    // Actuator telemetry
     ActuatorTelemetry actTel;
     if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
-        data.actuatorTarget = actTel.targetPercent;
-        data.actuatorActual = (int)actTel.currentPercent;
+        data.actuatorPercent = (int)actTel.currentPercent;
+        for(int i=0; i<3; i++) {
+            data.actuatorLimits[i] = actTel.limits[i];
+            data.actuatorLimitSet[i] = actTel.limitSet[i];
+        }
     }
 
+    // Motor telemetry
     MotorTelemetry motTel;
     if (xQueuePeek(motorTelQueue, &motTel, 0) == pdPASS) {
-        data.motorTargetSpeed = motTel.targetSpeed;
         data.motorPos = motTel.currentPosition;
         for(int i=0; i<3; i++) {
             data.motorLimits[i] = motTel.limits[i];
@@ -86,326 +108,104 @@ void InputManager::populateUIData(UIData& data) {
     }
 }
 
+// ============================================================================
+// S1: Arm — Simple directional jog
+// ============================================================================
 void InputManager::handleArmEncoder() {
-  int32_t currentPos = 0;
+  static int32_t lastPos = 0;
+  int32_t delta = 0;
   bool btnPressed = false;
-  bool longPressed = false;
-  bool doublePressed = false;
 
-  // 1. Thread-safe copy and clear encoder state
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    // DO NOT CONSTRAIN HERE. We want unbounded relative movement for the stepper!
-    currentPos = g_encoderState.position[0];
+    delta = g_encoderState.position[0] - lastPos;
+    lastPos = g_encoderState.position[0];
 
     if (g_encoderState.buttonPressed[0]) {
       btnPressed = true;
       g_encoderState.buttonPressed[0] = false;
     }
-    if (g_encoderState.buttonLongPressed[0]) {
-      longPressed = true;
-      g_encoderState.buttonLongPressed[0] = false;
-    }
-    if (g_encoderState.buttonDoublePressed[0]) {
-      doublePressed = true;
-      g_encoderState.buttonDoublePressed[0] = false;
-    }
+    // Clear unused button events for S1
+    g_encoderState.buttonLongPressed[0] = false;
+    g_encoderState.buttonDoublePressed[0] = false;
     xSemaphoreGive(encoderStateMutex);
   }
 
-  // 2. Read current calibration state from arm telemetry
-  ArmTelemetry armTel;
-  int posOut = -1, posIn = -1;
-  float currentAbsPos = 0;
-  if (xQueuePeek(armTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
-    posOut = armTel.posOut;
-    posIn = armTel.posIn;
-    currentAbsPos = armTel.currentPosition;
+  // Encoder turn: set jog direction
+  if (delta > 0) {
+    g_jogDirArm = 1;
+    g_armNode.setSpeed(JOG_SPEED_ARM);
+  } else if (delta < 0) {
+    g_jogDirArm = -1;
+    g_armNode.setSpeed(-JOG_SPEED_ARM);
   }
 
-  // 3. Calibration state machine (persistent across calls)
-  enum ArmCalibrationStep { CAL_OFF, CAL_SET_OUT, CAL_SET_IN };
-  static ArmCalibrationStep calStep = CAL_OFF;
-  static int32_t lastEncPos = 0;
-
-  // 4. Very Long Press (Double): Clear Calibration
-  if (doublePressed) {
-    if (posOut == -1 && posIn == -1) {
-      LCD_setMessage("CAL: Already Clear");
-    } else {
-      g_armNode.clearCal();
-      LCD_setMessage("CAL: Cleared");
-      printf("Arm CAL: Cleared preset positions\n");
-    }
-    calStep = CAL_OFF;
-    return;
-  }
-
-  // 5. Long press: enter calibration mode
-  if (longPressed && calStep == CAL_OFF) {
-    calStep = CAL_SET_OUT;
-    lastEncPos = currentPos;
-    LCD_notifyButtonPress(0);
-    LCD_setMessage("CAL: Set OUT");
-    printf("Entering Arm Calibration Mode\n");
-    return;
-  }
-
-  // 6. Calibration mode logic
-  if (calStep != CAL_OFF) {
-    // Jog the arm directly based on encoder delta (1 click = 100 steps)
-    int delta = currentPos - lastEncPos;
-    if (delta != 0) {
-      lastEncPos = currentPos;
-      g_armNode.jog(delta * 100.0f);
-    }
-
-    if (btnPressed) {
-      LCD_notifyButtonPress(0);
-      g_armNode.stop(); // Stop any residual motion
-
-      if (calStep == CAL_SET_OUT) {
-        g_armNode.setPosOut();
-        calStep = CAL_SET_IN;
-        LCD_setMessage("CAL: Set IN");
-        printf("Arm CAL: Out saved, now set In\n");
-
-      } else if (calStep == CAL_SET_IN) {
-        g_armNode.setPosIn();
-        calStep = CAL_OFF;
-        LCD_setMessage("CAL: Saved!");
-        printf("Arm CAL: In saved, calibration finished\n");
-        
-        // Convert the current physical position to a percentage for normal mode
-        float range = (float)(posIn - posOut);
-        int currentPct = 100;
-        if (abs(range) > 1.0f) {
-           currentPct = (int)(((currentAbsPos - posOut) / range) * 100.0f);
-        }
-        currentPct = constrain(currentPct, 0, 100);
-
-        // Reset encoder position to match the percentage
-        if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-          g_encoderState.position[0] = currentPct;
-          xSemaphoreGive(encoderStateMutex);
-        }
-      }
-    }
-    return; // Skip normal mode processing while calibrating
-  }
-
-  // 7. Normal mode: encoder adjusts arm target percentage (0-100%)
-  static int32_t lastTargetPct = -1;
-  int targetPct = currentPos;
-  targetPct = constrain(targetPct, 0, 100);
-
-  // Sync the hardware encoder back so it doesn't run away outside 0-100
-  if (targetPct != currentPos) {
-    if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      g_encoderState.position[0] = targetPct;
-      currentPos = targetPct;
-      xSemaphoreGive(encoderStateMutex);
-    }
-  }
-
-  if (targetPct != lastTargetPct) {
-    lastTargetPct = targetPct;
-    if (posOut != -1 && posIn != -1) {
-      g_armNode.setTarget((float)targetPct);
-    }
-  }
-
-  // 8. Short press: toggle between Out (0%) and In (100%)
+  // Short press: stop motor
   if (btnPressed) {
     LCD_notifyButtonPress(0);
-
-    if (posOut == -1 || posIn == -1) {
-      LCD_setMessage("Not Calibrated");
-      return;
-    }
-
-    int newTargetPct = (targetPct < 50) ? 100 : 0; // Toggle to opposite end
-
-    // Interlock: Block movement to 0% (Out) if Z-axis is not at Top clearance
-    if (newTargetPct == 0) {
-      MotorTelemetry motorTel;
-      bool atTop = false;
-      if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
-        atTop = motorTel.topEndstopTriggered;
-      }
-      if (!atTop) {
-        LCD_setMessage("Raise Z-Axis First!");
-        printf("Arm Interlock: Blocked move to Out because Z-axis is not at Top.\n");
-        return; // Abort
-      }
-    }
-
-    // Sync encoder so next turn starts from the toggled position
-    if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      g_encoderState.position[0] = newTargetPct;
-      xSemaphoreGive(encoderStateMutex);
-    }
-    lastTargetPct = newTargetPct;
-
-    LCD_setMessage(newTargetPct == 100 ? "Arm: Tip" : "Arm: Clear");
-    g_armNode.setTarget((float)newTargetPct);
+    g_jogDirArm = 0;
+    g_armNode.setSpeed(0);
+    LCD_setMessage("Arm: Stopped");
   }
 }
 
+// ============================================================================
+// S2: Actuator — Simple directional jog
+// ============================================================================
 void InputManager::handleActuatorEncoder() {
-  int32_t currentPos = 0;
+  static int32_t lastPos = 0;
+  int32_t delta = 0;
   bool btnPressed = false;
-  bool longPress = false;
-  bool doublePress = false;
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    int maxPos = 100 / ACTUATOR_STEP_PERCENT;
-    g_encoderState.position[1] = constrain(g_encoderState.position[1], 0, maxPos);
-    currentPos = g_encoderState.position[1];
+    delta = g_encoderState.position[1] - lastPos;
+    lastPos = g_encoderState.position[1];
 
     if (g_encoderState.buttonPressed[1]) {
       btnPressed = true;
       g_encoderState.buttonPressed[1] = false;
     }
-    if (g_encoderState.buttonLongPressed[1]) {
-      longPress = true;
-      g_encoderState.buttonLongPressed[1] = false;
-    }
-    if (g_encoderState.buttonDoublePressed[1]) {
-      doublePress = true;
-      g_encoderState.buttonDoublePressed[1] = false;
-    }
+    // Clear unused button events for S2
+    g_encoderState.buttonLongPressed[1] = false;
+    g_encoderState.buttonDoublePressed[1] = false;
     xSemaphoreGive(encoderStateMutex);
   }
 
-  // Read actuator telemetry
+  // Read current actuator position for stop-in-place
   ActuatorTelemetry actTel;
-  int actLimits[3] = {0, 0, 0};
-  bool actLimitSet[3] = {false, false, false};
-  if (xQueuePeek(actuatorTelQueue, &actTel, pdMS_TO_TICKS(10)) == pdPASS) {
-    actLimits[0] = actTel.limits[0];
-    actLimits[1] = actTel.limits[1];
-    actLimits[2] = actTel.limits[2];
-    actLimitSet[0] = actTel.limitSet[0];
-    actLimitSet[1] = actTel.limitSet[1];
-    actLimitSet[2] = actTel.limitSet[2];
+  int currentPct = 50; // fallback
+  if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
+    currentPct = (int)actTel.currentPercent;
   }
 
-  // 1. Encoder Turn: Jog Actuator
-  static int32_t d1 = 0;
-  if (d1 != currentPos) {
-    d1 = currentPos;
-    int targetPct = d1 * ACTUATOR_STEP_PERCENT;
-    g_actuatorNode.setTarget(targetPct);
+  // Encoder turn: jog actuator
+  if (delta > 0) {
+    g_jogDirActuator = 1;
+    g_actuatorNode.setTarget(100, JOG_PWM_ACTUATOR); // Extend toward 100%
+  } else if (delta < 0) {
+    g_jogDirActuator = -1;
+    g_actuatorNode.setTarget(0, JOG_PWM_ACTUATOR); // Retract toward 0%
   }
 
-  // 2. Short Press: Cycle Menu and Execute GOTO
+  // Short press: stop actuator at current position
   if (btnPressed) {
     LCD_notifyButtonPress(1);
-    
-    Enc1Menu sel = systemState.enc1MenuSelection;
-    int newSel = (int)sel + 1;
-    if (newSel > 4) newSel = 0; // 5 menu items (0-4): MAN, GOTO_TOP, GOTO_MID, GOTO_BOT, SPEED
-    systemState.enc1MenuSelection = (Enc1Menu)newSel;
-    
-    // Auto-GOTO if the limit is set
-    if (newSel == MENU_ACT_GOTO_TOP && actLimitSet[2]) {
-      g_actuatorNode.setTarget(actLimits[2]);
-      d1 = (actLimits[2] + ACTUATOR_STEP_PERCENT/2) / ACTUATOR_STEP_PERCENT;
-    } else if (newSel == MENU_ACT_GOTO_MID && actLimitSet[1]) {
-      g_actuatorNode.setTarget(actLimits[1]);
-      d1 = (actLimits[1] + ACTUATOR_STEP_PERCENT/2) / ACTUATOR_STEP_PERCENT;
-    } else if (newSel == MENU_ACT_GOTO_BOT && actLimitSet[0]) {
-      g_actuatorNode.setTarget(actLimits[0]);
-      d1 = (actLimits[0] + ACTUATOR_STEP_PERCENT/2) / ACTUATOR_STEP_PERCENT;
-    }
-    
-    // Update encoder position to match auto-goto or speed
-    if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-       if (newSel == MENU_ACT_SPEED) {
-           // If we just entered SPEED mode, load the current speed into the encoder
-           g_encoderState.position[1] = systemState.actuatorSlowSpeed / 5; // Scale down for UI
-       } else {
-           g_encoderState.position[1] = d1;
-       }
-       xSemaphoreGive(encoderStateMutex);
-    }
-  }
-
-  // 2b. Encoder Turn: Adjust Speed (if in SPEED menu)
-  if (systemState.enc1MenuSelection == MENU_ACT_SPEED) {
-      if (d1 != currentPos) {
-          int newSpeed = constrain(currentPos * 5, 0, 255);
-          if (xSemaphoreTake(systemStateMutex, 10) == pdTRUE) {
-              systemState.actuatorSlowSpeed = newSpeed;
-              xSemaphoreGive(systemStateMutex);
-          }
-          d1 = currentPos;
-      }
-  }
-
-  if (longPress) {
-    Enc1Menu sel = systemState.enc1MenuSelection;
-    if (sel == MENU_ACT_SPEED) {
-      StorageManager::saveActuatorSlowSpeed(systemState.actuatorSlowSpeed);
-      LCD_setMessage("Speed: Saved");
-      printf("Actuator Slow Speed saved to %d\n", systemState.actuatorSlowSpeed);
-    } else if (sel != MENU_ACT_MAN) {
-      int idx = 2; // Default GOTO_TOP
-      if (sel == MENU_ACT_GOTO_MID) idx = 1;
-      else if (sel == MENU_ACT_GOTO_BOT) idx = 0;
-
-      int targetPct = 0;
-      if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
-        targetPct = (int)actTel.currentPercent;
-      }
-      
-      if (idx == 0) g_actuatorNode.setLimitBot(targetPct);
-      else if (idx == 1) g_actuatorNode.setLimitMid(targetPct);
-      else if (idx == 2) g_actuatorNode.setLimitTop(targetPct);
-      
-      LCD_setMessage("Actuator: Set");
-      printf("Actuator Limit %d set to %d%%\n", idx, targetPct);
-    }
-  }
-
-  if (doublePress) {
-    Enc1Menu sel = systemState.enc1MenuSelection;
-    if (sel == MENU_ACT_SPEED) {
-        // Double press to reset speed
-        if (xSemaphoreTake(systemStateMutex, 10) == pdTRUE) {
-            systemState.actuatorSlowSpeed = 128;
-            xSemaphoreGive(systemStateMutex);
-        }
-        StorageManager::saveActuatorSlowSpeed(128);
-        if (xSemaphoreTake(encoderStateMutex, 10) == pdTRUE) {
-            g_encoderState.position[1] = 128 / 5;
-            xSemaphoreGive(encoderStateMutex);
-        }
-        LCD_setMessage("Speed: Reset");
-    } else if (sel != MENU_ACT_MAN) {
-      int idx = 2;
-      if (sel == MENU_ACT_GOTO_MID) idx = 1;
-      else if (sel == MENU_ACT_GOTO_BOT) idx = 0;
-
-      if (idx == 0) g_actuatorNode.clearLimitBot();
-      else if (idx == 1) g_actuatorNode.clearLimitMid();
-      else if (idx == 2) g_actuatorNode.clearLimitTop();
-      
-      LCD_setMessage("Actuator: Cleared");
-      printf("Actuator Limit %d cleared\n", idx);
-    }
+    g_jogDirActuator = 0;
+    g_actuatorNode.setTarget(currentPct, JOG_PWM_ACTUATOR);
+    LCD_setMessage("Act: Stopped");
   }
 }
 
+// ============================================================================
+// S3: Z Motor — Simple directional jog
+// ============================================================================
 void InputManager::handleMotorEncoder() {
-  int32_t currentPos = 0;
+  static int32_t lastPos = 0;
+  int32_t delta = 0;
   bool btnPressed = false;
-  int limit = 15;
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    g_encoderState.position[2] =
-        constrain(g_encoderState.position[2], -limit, limit);
-    currentPos = g_encoderState.position[2];
+    delta = g_encoderState.position[2] - lastPos;
+    lastPos = g_encoderState.position[2];
 
     if (g_encoderState.buttonPressed[2]) {
       btnPressed = true;
@@ -414,47 +214,63 @@ void InputManager::handleMotorEncoder() {
     xSemaphoreGive(encoderStateMutex);
   }
 
-  static bool motorPaused = false;
-  static int32_t last_d2 = 0;
-  int32_t d2 = currentPos;
-
-  if (motorPaused && (d2 != last_d2)) {
-    motorPaused = false;
-    LCD_setMessage("Motor: Unpaused");
-    printf("Motor Unpaused via Encoder Turn\n");
+  // Encoder turn: set jog direction
+  if (delta > 0) {
+    g_jogDirMotor = 1;
+    g_motorNode.setSpeed(JOG_SPEED_Z);
+  } else if (delta < 0) {
+    g_jogDirMotor = -1;
+    g_motorNode.setSpeed(-JOG_SPEED_Z);
   }
-  last_d2 = d2;
 
+  // Short press: stop motor
   if (btnPressed) {
     LCD_notifyButtonPress(2);
-
-    motorPaused = !motorPaused;
-    LCD_setMessage(motorPaused ? "Motor: PAUSED" : "Motor: RUNNING");
-    printf(motorPaused ? "Motor PAUSED\n" : "Motor RUNNING\n");
-
-    if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      g_encoderState.position[2] = 0;
-      xSemaphoreGive(encoderStateMutex);
-    }
-    last_d2 = 0;
-    d2 = 0;
+    g_jogDirMotor = 0;
+    g_motorNode.setSpeed(0);
+    LCD_setMessage("Z: Stopped");
   }
 
-  // Ensure speed is only updated if autonomous sequence isn't running
-  EventBits_t events = xEventGroupGetBits(controlEvents);
-  if (!(events & BIT_AUTO_RUNNING)) {
-    int speed = motorPaused ? 0 : (d2 * MOTOR_SPEED_SCALE_FACTOR);
-    g_motorNode.setSpeed(speed);
+  // Auto-update jog indicator when motor is stopped by limit
+  if (g_jogDirMotor != 0) {
+    MotorTelemetry motTel;
+    if (xQueuePeek(motorTelQueue, &motTel, 0) == pdPASS) {
+      if (motTel.targetSpeed == 0) {
+        g_jogDirMotor = 0; // Motor hit a limit
+      }
+    }
   }
 }
 
-void InputManager::handleAutonomousEncoder() {
-  bool longPress = false;
+// ============================================================================
+// S4: Unified Hierarchical Menu
+// ============================================================================
+
+// Helper: get the number of items in the current sub-menu
+static int getSubMenuCount(S4Level0 menu) {
+  switch (menu) {
+    case S4_ARM: return S4_ARM_COUNT;
+    case S4_ACT: return S4_POS_COUNT;
+    case S4_Z:   return S4_POS_COUNT;
+    default:     return 0;
+  }
+}
+
+void InputManager::handleMenuEncoder() {
   bool shortPress = false;
+  bool longPress = false;
   bool doublePress = false;
-  int32_t delta3 = 0;
+  int32_t delta = 0;
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+    static int32_t lastPos = 0;
+    delta = g_encoderState.position[3] - lastPos;
+    lastPos = g_encoderState.position[3];
+
+    if (g_encoderState.buttonPressed[3]) {
+      shortPress = true;
+      g_encoderState.buttonPressed[3] = false;
+    }
     if (g_encoderState.buttonLongPressed[3]) {
       longPress = true;
       g_encoderState.buttonLongPressed[3] = false;
@@ -463,142 +279,217 @@ void InputManager::handleAutonomousEncoder() {
       doublePress = true;
       g_encoderState.buttonDoublePressed[3] = false;
     }
-    if (g_encoderState.buttonPressed[3]) {
-      shortPress = true;
-      g_encoderState.buttonPressed[3] = false;
-    }
-
-    static int32_t last_d3 = 0;
-    delta3 = g_encoderState.position[3] - last_d3;
-    last_d3 = g_encoderState.position[3];
-
     xSemaphoreGive(encoderStateMutex);
   }
 
-  // Read motor telemetry for limit checks
-  MotorTelemetry motorTel;
-  float motorLimits[3] = {0, 0, 0};
-  bool motorLimitSet[3] = {false, false, false};
-  if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
-    motorLimits[0] = motorTel.limits[0];
-    motorLimits[1] = motorTel.limits[1];
-    motorLimits[2] = motorTel.limits[2];
-    motorLimitSet[0] = motorTel.limitSet[0];
-    motorLimitSet[1] = motorTel.limitSet[1];
-    motorLimitSet[2] = motorTel.limitSet[2];
-  }
-
-  // Read arm telemetry for calibration check
+  // --- Read telemetry for position operations ---
   ArmTelemetry armTel;
-  int posOut = -1, posIn = -1;
-  if (xQueuePeek(armTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
-    posOut = armTel.posOut;
-    posIn = armTel.posIn;
+  int armPosOut = -1, armPosIn = -1;
+  float armCurrentPos = 0;
+  if (xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
+    armPosOut = armTel.posOut;
+    armPosIn = armTel.posIn;
+    armCurrentPos = armTel.currentPosition;
   }
 
-  // 1. Long Press: Motor Limits Setup
-  if (longPress) {
-    Enc3Menu sel = systemState.enc3MenuSelection;
-    if (sel != MENU_AUTO) {
-      int idx = 2; // Default GOTO_TOP
-      if (sel == MENU_GOTO_MID) idx = 1;
-      else if (sel == MENU_GOTO_BOT) idx = 0;
-
-      float currentPos = 0;
-      if (xQueuePeek(motorTelQueue, &motorTel, 0) == pdPASS) {
-        currentPos = motorTel.currentPosition;
-      }
-
-      if (idx == 0) g_motorNode.setLimitBot(currentPos);
-      else if (idx == 1) g_motorNode.setLimitMid(currentPos);
-      else if (idx == 2) g_motorNode.setLimitTop(currentPos);
-
-      LCD_setMessage("Position Set");
-      printf("Limit %d set to %.2f\n", idx, currentPos);
+  ActuatorTelemetry actTel;
+  int actLimits[3] = {0};
+  bool actLimitSet[3] = {false};
+  if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
+    for (int i = 0; i < 3; i++) {
+      actLimits[i] = actTel.limits[i];
+      actLimitSet[i] = actTel.limitSet[i];
     }
   }
 
-  // 1b. Double Press: Clear Position
-  if (doublePress) {
-    Enc3Menu sel = systemState.enc3MenuSelection;
-    if (sel != MENU_AUTO) {
-      int idx = 2;
-      if (sel == MENU_GOTO_MID) idx = 1;
-      else if (sel == MENU_GOTO_BOT) idx = 0;
-
-      if (idx == 0) g_motorNode.clearLimitBot();
-      else if (idx == 1) g_motorNode.clearLimitMid();
-      else if (idx == 2) g_motorNode.clearLimitTop();
-
-      LCD_setMessage("Position Cleared");
-      printf("Limit %d cleared\n", idx);
+  MotorTelemetry motorTel;
+  float motorLimits[3] = {0};
+  bool motorLimitSet[3] = {false};
+  float motorCurrentPos = 0;
+  if (xQueuePeek(motorTelQueue, &motorTel, 0) == pdPASS) {
+    motorCurrentPos = motorTel.currentPosition;
+    for (int i = 0; i < 3; i++) {
+      motorLimits[i] = motorTel.limits[i];
+      motorLimitSet[i] = motorTel.limitSet[i];
     }
   }
 
-  // 2. Encoder Turn: Cycle Menu
-  if (delta3 != 0) {
-    int sel = (int)systemState.enc3MenuSelection + delta3;
-    while (sel < 0) sel += 4;
-    sel = sel % 4;
-    systemState.enc3MenuSelection = (Enc3Menu)sel;
-  }
+  // Check if auto is running — block menu actions
+  EventBits_t events = xEventGroupGetBits(controlEvents);
+  bool autoRunning = (events & BIT_AUTO_RUNNING) != 0;
 
-  // 3. Short Press: Launch, Resume, or E-STOP
-  if (shortPress) {
-    LCD_notifyButtonPress(3);
+  // ===========================
+  // LEVEL 0: Axis selection
+  // ===========================
+  if (!systemState.s4InSubMenu) {
+    // Encoder turn: cycle through Level 0 options
+    if (delta != 0) {
+      int sel = (int)systemState.s4Menu + delta;
+      while (sel < 0) sel += S4_LEVEL0_COUNT;
+      sel = sel % S4_LEVEL0_COUNT;
+      systemState.s4Menu = (S4Level0)sel;
+    }
 
-    EventBits_t events = xEventGroupGetBits(controlEvents);
-    if (!(events & BIT_AUTO_RUNNING)) {
-      Enc3Menu sel = systemState.enc3MenuSelection;
+    // Short press: enter sub-menu or launch Auto
+    if (shortPress) {
+      LCD_notifyButtonPress(3);
 
-      bool canRun = false;
-      if (sel == MENU_AUTO) {
-        // Read actuator telemetry to verify limits
-        ActuatorTelemetry actTel;
-        bool actLimitSet[3] = {false, false, false};
-        if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
-            actLimitSet[0] = actTel.limitSet[0];
-            actLimitSet[1] = actTel.limitSet[1];
-            actLimitSet[2] = actTel.limitSet[2];
-        }
-
-        canRun = motorLimitSet[0] && motorLimitSet[1] && motorLimitSet[2] &&
-                 actLimitSet[0] && actLimitSet[1] && actLimitSet[2] &&
-                 (posOut != -1) && (posIn != -1);
-      } else {
-        int idx = 2;
-        if (sel == MENU_GOTO_MID) idx = 1;
-        else if (sel == MENU_GOTO_BOT) idx = 0;
-        canRun = motorLimitSet[idx];
+      if (autoRunning) {
+        // E-STOP if auto is running
+        xEventGroupSetBits(controlEvents, BIT_AUTO_RESUME | BIT_ESTOP_REQUEST);
+        LCD_setMessage("Auto: STOPPING...");
+        return;
       }
 
-      if (canRun) {
-        if (sel == MENU_AUTO) {
+      if (systemState.s4Menu == S4_AUTO) {
+        // Launch autonomous sequence (check prerequisites)
+        bool canRun = motorLimitSet[0] && motorLimitSet[1] && motorLimitSet[2] &&
+                      actLimitSet[0] && actLimitSet[1] && actLimitSet[2] &&
+                      (armPosOut != -1) && (armPosIn != -1);
+        
+        if (canRun) {
           TaskHandle_t autoTaskHandle = NULL;
           if (xTaskCreate(autonomous_task, "AutoTask", 4096, NULL, 2,
                           &autoTaskHandle) == pdPASS) {
             xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
           } else {
             LCD_setMessage("Error: Task Failed");
-            ESP_LOGE("CTRL", "Failed to create autonomous_task");
+            ESP_LOGE("MENU", "Failed to create autonomous_task");
           }
         } else {
-          TaskHandle_t gotoTaskHandle = NULL;
-          if (xTaskCreate(motor_goto_task, "GotoTask", 4096, NULL, 2,
-                          &gotoTaskHandle) == pdPASS) {
-            xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
-          } else {
-            LCD_setMessage("Error: Task Failed");
-          }
+          LCD_setMessage("Missing Limits");
         }
       } else {
-        LCD_setMessage("Missing Limits");
+        // Enter sub-menu for Arm/Act/Z
+        systemState.s4InSubMenu = true;
+        systemState.s4SubMenu = 0;
       }
-    } else {
-      // Sequence IS running — acts as an E-STOP.
-      xEventGroupSetBits(controlEvents,
-                         BIT_AUTO_RESUME | BIT_ESTOP_REQUEST);
+    }
+    return;
+  }
+
+  // ===========================
+  // LEVEL 1: Position sub-menu
+  // ===========================
+  int itemCount = getSubMenuCount(systemState.s4Menu);
+
+  // Encoder turn: cycle through sub-menu items
+  if (delta != 0) {
+    int sel = systemState.s4SubMenu + delta;
+    while (sel < 0) sel += itemCount;
+    sel = sel % itemCount;
+    systemState.s4SubMenu = sel;
+  }
+
+  S4Level0 axis = systemState.s4Menu;
+  int item = systemState.s4SubMenu;
+
+  // --- Check for "Back" item ---
+  bool isBack = false;
+  if (axis == S4_ARM && item == S4_ARM_BACK) isBack = true;
+  if ((axis == S4_ACT || axis == S4_Z) && item == S4_POS_BACK) isBack = true;
+
+  // ---- Short Press: GOTO or Back ----
+  if (shortPress) {
+    LCD_notifyButtonPress(3);
+
+    if (autoRunning) {
+      xEventGroupSetBits(controlEvents, BIT_AUTO_RESUME | BIT_ESTOP_REQUEST);
       LCD_setMessage("Auto: STOPPING...");
+      return;
+    }
+
+    if (isBack) {
+      systemState.s4InSubMenu = false;
+      return;
+    }
+
+    // GOTO action based on axis and item
+    if (axis == S4_ARM) {
+      if (armPosOut == -1 || armPosIn == -1) {
+        LCD_setMessage("Arm: Not Cal'd");
+        return;
+      }
+      if (item == S4_ARM_TIP) {
+        g_armNode.setTarget(100.0f);
+        LCD_setMessage("Arm: Go Tip");
+      } else if (item == S4_ARM_CLEAR) {
+        g_armNode.setTarget(0.0f);
+        LCD_setMessage("Arm: Go Clear");
+      }
+    } else if (axis == S4_ACT) {
+      int limitIdx = (item == S4_POS_TOP) ? 2 : ((item == S4_POS_BOT) ? 0 : 1);
+      if (!actLimitSet[limitIdx]) {
+        LCD_setMessage("Act: Not Set");
+        return;
+      }
+      g_actuatorNode.setTarget(actLimits[limitIdx]);
+      LCD_setMessage("Act: GOTO");
+    } else if (axis == S4_Z) {
+      int limitIdx = (item == S4_POS_TOP) ? 2 : ((item == S4_POS_BOT) ? 0 : 1);
+      if (!motorLimitSet[limitIdx]) {
+        LCD_setMessage("Z: Not Set");
+        return;
+      }
+
+      TaskHandle_t gotoTaskHandle = NULL;
+      if (xTaskCreate(motor_goto_task, "GotoTask", 4096,
+                      (void*)(intptr_t)limitIdx, 2,
+                      &gotoTaskHandle) == pdPASS) {
+        xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
+      } else {
+        LCD_setMessage("Error: Task Failed");
+      }
+    }
+  }
+
+  // ---- Long Press: SET current position ----
+  if (longPress && !isBack) {
+    if (axis == S4_ARM) {
+      if (item == S4_ARM_TIP) {
+        g_armNode.setPosIn();
+        LCD_setMessage("Arm: Tip Set");
+        printf("Arm Tip (posIn) set at current position\n");
+      } else if (item == S4_ARM_CLEAR) {
+        g_armNode.setPosOut();
+        LCD_setMessage("Arm: Clear Set");
+        printf("Arm Clear (posOut) set at current position\n");
+      }
+    } else if (axis == S4_ACT) {
+      int pct = (int)actTel.currentPercent;
+      if (item == S4_POS_TOP) g_actuatorNode.setLimitTop(pct);
+      else if (item == S4_POS_MID) g_actuatorNode.setLimitMid(pct);
+      else if (item == S4_POS_BOT) g_actuatorNode.setLimitBot(pct);
+      LCD_setMessage("Act: Position Set");
+      printf("Actuator limit %d set to %d%%\n", item, pct);
+    } else if (axis == S4_Z) {
+      if (item == S4_POS_TOP) g_motorNode.setLimitTop(motorCurrentPos);
+      else if (item == S4_POS_MID) g_motorNode.setLimitMid(motorCurrentPos);
+      else if (item == S4_POS_BOT) g_motorNode.setLimitBot(motorCurrentPos);
+      LCD_setMessage("Z: Position Set");
+      printf("Motor limit %d set to %.2f\n", item, motorCurrentPos);
+    }
+  }
+
+  // ---- Double Press: CLEAR position ----
+  if (doublePress && !isBack) {
+    if (axis == S4_ARM) {
+      // Clear both arm calibration points
+      g_armNode.clearCal();
+      LCD_setMessage("Arm: Cal Cleared");
+      printf("Arm calibration cleared\n");
+    } else if (axis == S4_ACT) {
+      if (item == S4_POS_TOP) g_actuatorNode.clearLimitTop();
+      else if (item == S4_POS_MID) g_actuatorNode.clearLimitMid();
+      else if (item == S4_POS_BOT) g_actuatorNode.clearLimitBot();
+      LCD_setMessage("Act: Cleared");
+      printf("Actuator limit %d cleared\n", item);
+    } else if (axis == S4_Z) {
+      if (item == S4_POS_TOP) g_motorNode.clearLimitTop();
+      else if (item == S4_POS_MID) g_motorNode.clearLimitMid();
+      else if (item == S4_POS_BOT) g_motorNode.clearLimitBot();
+      LCD_setMessage("Z: Cleared");
+      printf("Motor limit %d cleared\n", item);
     }
   }
 }

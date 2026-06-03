@@ -11,5 +11,5 @@ private:
     static void handleArmEncoder();
     static void handleActuatorEncoder();
     static void handleMotorEncoder();
-    static void handleAutonomousEncoder();
+    static void handleMenuEncoder();
 };

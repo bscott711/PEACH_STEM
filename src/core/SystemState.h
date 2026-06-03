@@ -4,8 +4,24 @@
 // --- Enums and Menus ---
 enum DeviceMode { IDLE, PICKUP_CELL, DROPOFF_CELL };
 enum ActuatorDirection { ACT_STOP = 0, ACT_FORWARD, ACT_REVERSE };
-enum Enc1Menu { MENU_ACT_MAN, MENU_ACT_GOTO_TOP, MENU_ACT_GOTO_MID, MENU_ACT_GOTO_BOT, MENU_ACT_SPEED };
-enum Enc3Menu { MENU_AUTO, MENU_GOTO_TOP, MENU_GOTO_MID, MENU_GOTO_BOT };
+
+// --- S4 Hierarchical Menu ---
+enum S4Level0 { S4_ARM, S4_ACT, S4_Z, S4_AUTO, S4_LEVEL0_COUNT };
+
+// Sub-menu indices for Arm
+#define S4_ARM_TIP   0
+#define S4_ARM_CLEAR 1
+#define S4_ARM_BACK  2
+#define S4_ARM_COUNT 3
+
+// Sub-menu indices for Actuator & Z (same layout)
+#define S4_POS_TOP   0
+#define S4_POS_MID   1
+#define S4_POS_BOT   2
+#define S4_POS_BACK  3
+#define S4_POS_COUNT 4
+
+
 
 // --- Sequence Engine Types ---
 enum SequenceAction {
@@ -28,9 +44,12 @@ struct SequenceStep {
 struct SystemState {
   DeviceMode mode;
   
-  // Controller state only (subsystem state moved to Active Nodes)
-  Enc1Menu enc1MenuSelection;  // MENU_ACT_MAN, GOTO_TOP, GOTO_MID, GOTO_BOT
-  Enc3Menu enc3MenuSelection;
+  // S4 Menu state
+  S4Level0 s4Menu;
+  int s4SubMenu;
+  bool s4InSubMenu;
+  
+
   
   // Collision Detection (shared flag)
   bool collisionDetected;

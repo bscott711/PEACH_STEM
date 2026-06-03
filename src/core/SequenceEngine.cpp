@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include <cstdio>
 #include <cmath>
+#include <cstdint>
 
 extern ArmNode g_armNode;
 extern ActuatorNode g_actuatorNode;
@@ -233,20 +234,13 @@ void autonomous_task(void *pvParameters) {
 }
 
 void motor_goto_task(void *pvParameters) {
-  Enc3Menu sel = MENU_AUTO;
+  int limitIdx = (int)(intptr_t)pvParameters;  // 0=Bot, 1=Mid, 2=Top
   float targetZ = 0.0f;
-
-  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-    sel = systemState.enc3MenuSelection;
-    xSemaphoreGive(systemStateMutex);
-  }
 
   // Read motor limits from telemetry
   MotorTelemetry motorTel;
   if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
-    if (sel == MENU_GOTO_TOP) targetZ = motorTel.limits[2];
-    else if (sel == MENU_GOTO_MID) targetZ = motorTel.limits[1];
-    else if (sel == MENU_GOTO_BOT) targetZ = motorTel.limits[0];
+    targetZ = motorTel.limits[limitIdx];
   }
 
   LCD_setMessage("Auto: GOTO");
