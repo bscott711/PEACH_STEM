@@ -13,7 +13,7 @@
 #define SERVO_MIN_PERCENT 0
 #define SERVO_CENTER_PERCENT 50
 #define SERVO_MAX_PERCENT 100
-#define ACTUATOR_STEP_PERCENT 5
+#define ACTUATOR_STEP_PERCENT 10
 
 // Z-axis position targets (in currentPosition units)
 // Derived from speed=120000, time=15s, factor=1.372e-6 ≈ 2.47

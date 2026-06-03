@@ -252,7 +252,8 @@ static void handleActuatorEncoder() {
   bool doublePress = false;
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    g_encoderState.position[1] = constrain(g_encoderState.position[1], 0, 20);
+    int maxPos = 100 / ACTUATOR_STEP_PERCENT;
+    g_encoderState.position[1] = constrain(g_encoderState.position[1], 0, maxPos);
     currentPos = g_encoderState.position[1];
 
     if (g_encoderState.buttonPressed[1]) {
