@@ -14,6 +14,7 @@ private:
     // High-resolution position tracking (float percent for smooth ramping)
     float currentPercent;
     int targetPercent;
+    int targetSpeedPWM;
     float lastSavedPercent;
     
     // Limit positions (NVS persisted)
@@ -36,7 +37,7 @@ public:
     ActuatorTelemetry generateTelemetry() override;
     
     // Convenience methods for sending commands
-    bool setTarget(int percent);
+    bool setTarget(int percent, int pwmSpeed = 255);
     bool setLimitBot(int percent);
     bool setLimitMid(int percent);
     bool setLimitTop(int percent);

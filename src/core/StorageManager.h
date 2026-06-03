@@ -12,6 +12,8 @@ public:
     static void loadActuatorLimits(int limits[3], bool limitSet[3]);
     static void saveActuatorPosition(float pos);
     static float loadActuatorPosition();
+    static void saveActuatorSlowSpeed(uint8_t speed);
+    static uint8_t loadActuatorSlowSpeed();
 
     // --- Motor ---
     static void saveMotorLimitBot(float limit, bool isSet);

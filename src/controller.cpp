@@ -35,7 +35,8 @@ SystemState systemState = {.mode = IDLE,
                            .enc1MenuSelection = MENU_ACT_MAN,
                            .enc3MenuSelection = MENU_AUTO,
                            .collisionDetected = false,
-                           .collisionTimestamp = 0};
+                           .collisionTimestamp = 0,
+                           .actuatorSlowSpeed = 128};
 
 void initSystemState() {
   systemStateMutex = xSemaphoreCreateMutex();
@@ -50,6 +51,7 @@ void initSystemState() {
     systemState.enc1MenuSelection = MENU_ACT_MAN;
     systemState.enc3MenuSelection = MENU_AUTO;
     systemState.collisionDetected = false;
+    systemState.actuatorSlowSpeed = 128;
     xSemaphoreGive(systemStateMutex);
   }
 }

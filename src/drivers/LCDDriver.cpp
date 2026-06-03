@@ -289,6 +289,13 @@ static void draw_encoderStatus(const UIData& data) {
   } else if (enc1MenuSelection == MENU_ACT_GOTO_BOT) {
     snprintf(statusBuffer, sizeof(statusBuffer), "S1:ToBot:%03d%%",
              actuatorTarget);
+  } else if (enc1MenuSelection == MENU_ACT_SPEED) {
+    uint8_t speed = 128;
+    if (xSemaphoreTake(systemStateMutex, 0) == pdTRUE) {
+        speed = systemState.actuatorSlowSpeed;
+        xSemaphoreGive(systemStateMutex);
+    }
+    snprintf(statusBuffer, sizeof(statusBuffer), "S1:Spd:%03d", speed);
   }
   u8g2.drawStr(0, 26, statusBuffer);
 

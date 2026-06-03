@@ -7,6 +7,7 @@ static const char* TAG = "ACTUATOR_NODE";
 ActuatorNode::ActuatorNode()
     : currentPercent(0.0f)
     , targetPercent(0)
+    , targetSpeedPWM(255)
     , lastSavedPercent(-1.0f) {
     limits[0] = 0; limits[1] = 0; limits[2] = 0;
     limitSet[0] = false; limitSet[1] = false; limitSet[2] = false;
@@ -38,7 +39,8 @@ void ActuatorNode::processCommand(const ActuatorCommand& cmd) {
     switch (cmd.action) {
         case ActuatorCmdAction::SET_TARGET:
             targetPercent = constrain(cmd.value, 0, 100);
-            ESP_LOGD(TAG, "Set target: %d%%", targetPercent);
+            targetSpeedPWM = constrain(cmd.pwmSpeed, 0, 255);
+            ESP_LOGD(TAG, "Set target: %d%%, spd: %d", targetPercent, targetSpeedPWM);
             break;
             
         case ActuatorCmdAction::SET_LIMIT_BOT:
@@ -95,13 +97,13 @@ void ActuatorNode::hwUpdate() {
         if (currentPercent > targetPercent) {
             currentPercent = targetPercent;  // Clamp exact arrival
         }
-        HBridge_Set(ACT_FORWARD, 255);
+        HBridge_Set(ACT_FORWARD, targetSpeedPWM);
     } else if (currentPercent > targetPercent) {
         currentPercent -= dynamicPctPerTick;
         if (currentPercent < targetPercent) {
             currentPercent = targetPercent;  // Clamp exact arrival
         }
-        HBridge_Set(ACT_REVERSE, 255);
+        HBridge_Set(ACT_REVERSE, targetSpeedPWM);
     } else {
         HBridge_Set(ACT_STOP);
         
@@ -127,10 +129,11 @@ ActuatorTelemetry ActuatorNode::generateTelemetry() {
     return tel;
 }
 
-bool ActuatorNode::setTarget(int percent) {
+bool ActuatorNode::setTarget(int percent, int pwmSpeed) {
     ActuatorCommand cmd;
     cmd.action = ActuatorCmdAction::SET_TARGET;
     cmd.value = percent;
+    cmd.pwmSpeed = pwmSpeed;
     return sendCommand(cmd);
 }
 

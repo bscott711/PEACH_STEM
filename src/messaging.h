@@ -52,6 +52,7 @@ enum class ActuatorCmdAction {
 struct ActuatorCommand {
     ActuatorCmdAction action;
     int value;       // Target percent or limit index
+    int pwmSpeed;    // Target speed (0-255) for SET_TARGET
 };
 
 struct ActuatorTelemetry {

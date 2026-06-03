@@ -15,22 +15,32 @@ extern ActuatorNode g_actuatorNode;
 extern MotorNode g_motorNode;
 
 void autonomous_task(void *pvParameters) {
+  uint8_t slowSpeed = 128;
+  if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      slowSpeed = systemState.actuatorSlowSpeed;
+      xSemaphoreGive(systemStateMutex);
+  }
+
   // Define the autonomous sequence steps
+  // action, target, limitIdx, actuatorSpeed, message
   const SequenceStep sequence[] = {
-      {SEQ_MOVE_Z, 0, Z_CLEARANCE_POS, "Auto: Raise Z"},
-      {SEQ_MOVE_ARM, 0, 0, "Auto: Arm Out"},
-      {SEQ_WAIT_MS, 500, 0, "Wait 500ms"},
-      {SEQ_MOVE_Z, 0, Z_TUBE_POS, "Auto: Lower Z"},
-      {SEQ_MOVE_ARM, 100, 0, "Auto: Arm In"},
-      {SEQ_WAIT_MS, 500, 0, "Wait 500ms"},
-      {SEQ_MOVE_Z, 0, Z_CLEARANCE_POS, "Auto: Raise Z"},
-      {SEQ_MOVE_ARM, 0, 0, "Auto: Arm Out"},
-      {SEQ_WAIT_MS, 500, 0, "Wait 500ms"},
-      {SEQ_MOVE_ACTUATOR, 100, 0, "Auto: Actuator Extend"},
-      {SEQ_WAIT_MS, 1500, 0, "Wait 1.5s"},
-      {SEQ_MOVE_ACTUATOR, 0, 0, "Auto: Actuator Retract"},
-      {SEQ_WAIT_MS, 1500, 0, "Wait 1.5s"},
-      {SEQ_MOVE_Z, 0, Z_TUBE_POS, "Auto: Lower Z (Done)"}};
+      {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z"},
+      {SEQ_MOVE_ARM, 100, 0, 0, "Auto: Arm Tip"},
+      {SEQ_MOVE_ACTUATOR, 2, 0, 255, "Auto: Act Extend"},
+      {SEQ_MOVE_Z, 0, 0, 0, "Auto: Lower Z"},
+      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix Retract"},
+      {SEQ_MOVE_ACTUATOR, 2, 0, 255, "Auto: Mix Extend"},
+      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix Retract"},
+      {SEQ_MOVE_ACTUATOR, 2, 0, 255, "Auto: Mix Extend"},
+      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix Retract"},
+      {SEQ_MOVE_ACTUATOR, 2, 0, 255, "Auto: Mix Extend"},
+      {SEQ_MOVE_ACTUATOR, 0, 0, 255, "Auto: Pipette"},
+      {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z"},
+      {SEQ_MOVE_ARM, 0, 0, 0, "Auto: Arm Clear"},
+      {SEQ_MOVE_Z, 0, 1, 0, "Auto: Dispense Z"},
+      {SEQ_MOVE_ACTUATOR, 2, 0, slowSpeed, "Auto: Dispensing"},
+      {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z Done"}
+  };
 
   const int numSteps = sizeof(sequence) / sizeof(sequence[0]);
   bool aborted = false;
@@ -62,18 +72,17 @@ void autonomous_task(void *pvParameters) {
 
       switch (step.action) {
       case SEQ_MOVE_Z: {
-        // Send speed command to motor node
-        int velocity = (step.zTarget > 0) ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
-        
         MotorTelemetry motorTel;
         float currentPos = 0;
+        float targetZ = 0;
         if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
           currentPos = motorTel.currentPosition;
+          targetZ = motorTel.limits[step.limitIdx];
         }
 
         // Determine direction
-        bool goingUp = (step.zTarget > currentPos);
-        velocity = goingUp ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
+        bool goingUp = (targetZ > currentPos);
+        int velocity = goingUp ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
         
         g_motorNode.setSpeed(velocity);
 
@@ -88,8 +97,8 @@ void autonomous_task(void *pvParameters) {
 
           if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
             currentPos = motorTel.currentPosition;
-            if (goingUp && currentPos >= step.zTarget) posReached = true;
-            if (!goingUp && currentPos <= step.zTarget) posReached = true;
+            if (goingUp && currentPos >= targetZ) posReached = true;
+            if (!goingUp && currentPos <= targetZ) posReached = true;
           }
 
           if (!posReached) vTaskDelay(pdMS_TO_TICKS(10));
@@ -127,12 +136,36 @@ void autonomous_task(void *pvParameters) {
       }
 
       case SEQ_MOVE_ACTUATOR: {
-        g_actuatorNode.setTarget(step.target);
+        ActuatorTelemetry actTel;
+        int targetPct = 0;
+        if (xQueuePeek(actuatorTelQueue, &actTel, pdMS_TO_TICKS(10)) == pdPASS) {
+          targetPct = actTel.limits[step.target];
+        }
+        
+        g_actuatorNode.setTarget(targetPct, step.actuatorSpeed);
 
         // UI Back-Sync: update encoder 1 so manual controls stay in sync
         if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-          g_encoderState.position[1] = step.target / ACTUATOR_STEP_PERCENT;
+          g_encoderState.position[1] = targetPct / ACTUATOR_STEP_PERCENT;
           xSemaphoreGive(encoderStateMutex);
+        }
+        
+        // Wait until actuator reaches the target percentage
+        bool posReached = false;
+        while (!posReached) {
+          ev = xEventGroupGetBits(controlEvents);
+          if (ev & BIT_ESTOP_REQUEST) {
+            aborted = true;
+            break;
+          }
+
+          if (xQueuePeek(actuatorTelQueue, &actTel, pdMS_TO_TICKS(10)) == pdPASS) {
+            if (abs((int)actTel.currentPercent - targetPct) <= 1) {
+              posReached = true;
+            }
+          }
+
+          if (!posReached) vTaskDelay(pdMS_TO_TICKS(50));
         }
         
         stepComplete = true;

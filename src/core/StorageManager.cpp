@@ -65,6 +65,22 @@ float StorageManager::loadActuatorPosition() {
     return pos;
 }
 
+void StorageManager::saveActuatorSlowSpeed(uint8_t speed) {
+    if (prefs.begin("peach", false)) {
+        prefs.putUChar("actSlowSpd", speed);
+        prefs.end();
+    }
+}
+
+uint8_t StorageManager::loadActuatorSlowSpeed() {
+    uint8_t speed = 128; // Default 50% PWM
+    if (prefs.begin("peach", false)) {
+        speed = prefs.getUChar("actSlowSpd", 128);
+        prefs.end();
+    }
+    return speed;
+}
+
 // --- Motor ---
 void StorageManager::saveMotorLimitBot(float limit, bool isSet) {
     if (prefs.begin("peach", false)) {

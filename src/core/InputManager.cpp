@@ -246,7 +246,7 @@ void InputManager::handleArmEncoder() {
     }
     lastTargetPct = newTargetPct;
 
-    LCD_setMessage(newTargetPct == 100 ? "Arm: In" : "Arm: Out");
+    LCD_setMessage(newTargetPct == 100 ? "Arm: Tip" : "Arm: Clear");
     g_armNode.setTarget((float)newTargetPct);
   }
 }
@@ -304,7 +304,7 @@ void InputManager::handleActuatorEncoder() {
     
     Enc1Menu sel = systemState.enc1MenuSelection;
     int newSel = (int)sel + 1;
-    if (newSel > 3) newSel = 0; // 4 menu items (0-3): MAN, GOTO_TOP, GOTO_MID, GOTO_BOT
+    if (newSel > 4) newSel = 0; // 5 menu items (0-4): MAN, GOTO_TOP, GOTO_MID, GOTO_BOT, SPEED
     systemState.enc1MenuSelection = (Enc1Menu)newSel;
     
     // Auto-GOTO if the limit is set
@@ -319,17 +319,37 @@ void InputManager::handleActuatorEncoder() {
       d1 = (actLimits[0] + ACTUATOR_STEP_PERCENT/2) / ACTUATOR_STEP_PERCENT;
     }
     
-    // Update encoder position to match auto-goto
+    // Update encoder position to match auto-goto or speed
     if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-       g_encoderState.position[1] = d1;
+       if (newSel == MENU_ACT_SPEED) {
+           // If we just entered SPEED mode, load the current speed into the encoder
+           g_encoderState.position[1] = systemState.actuatorSlowSpeed / 5; // Scale down for UI
+       } else {
+           g_encoderState.position[1] = d1;
+       }
        xSemaphoreGive(encoderStateMutex);
     }
   }
 
-  // 3. Long Press: Set Limit
+  // 2b. Encoder Turn: Adjust Speed (if in SPEED menu)
+  if (systemState.enc1MenuSelection == MENU_ACT_SPEED) {
+      if (d1 != currentPos) {
+          int newSpeed = constrain(currentPos * 5, 0, 255);
+          if (xSemaphoreTake(systemStateMutex, 10) == pdTRUE) {
+              systemState.actuatorSlowSpeed = newSpeed;
+              xSemaphoreGive(systemStateMutex);
+          }
+          d1 = currentPos;
+      }
+  }
+
   if (longPress) {
     Enc1Menu sel = systemState.enc1MenuSelection;
-    if (sel != MENU_ACT_MAN) {
+    if (sel == MENU_ACT_SPEED) {
+      StorageManager::saveActuatorSlowSpeed(systemState.actuatorSlowSpeed);
+      LCD_setMessage("Speed: Saved");
+      printf("Actuator Slow Speed saved to %d\n", systemState.actuatorSlowSpeed);
+    } else if (sel != MENU_ACT_MAN) {
       int idx = 2; // Default GOTO_TOP
       if (sel == MENU_ACT_GOTO_MID) idx = 1;
       else if (sel == MENU_ACT_GOTO_BOT) idx = 0;
@@ -348,10 +368,21 @@ void InputManager::handleActuatorEncoder() {
     }
   }
 
-  // 4. Double Press: Clear Limit
   if (doublePress) {
     Enc1Menu sel = systemState.enc1MenuSelection;
-    if (sel != MENU_ACT_MAN) {
+    if (sel == MENU_ACT_SPEED) {
+        // Double press to reset speed
+        if (xSemaphoreTake(systemStateMutex, 10) == pdTRUE) {
+            systemState.actuatorSlowSpeed = 128;
+            xSemaphoreGive(systemStateMutex);
+        }
+        StorageManager::saveActuatorSlowSpeed(128);
+        if (xSemaphoreTake(encoderStateMutex, 10) == pdTRUE) {
+            g_encoderState.position[1] = 128 / 5;
+            xSemaphoreGive(encoderStateMutex);
+        }
+        LCD_setMessage("Speed: Reset");
+    } else if (sel != MENU_ACT_MAN) {
       int idx = 2;
       if (sel == MENU_ACT_GOTO_MID) idx = 1;
       else if (sel == MENU_ACT_GOTO_BOT) idx = 0;
@@ -522,7 +553,17 @@ void InputManager::handleAutonomousEncoder() {
 
       bool canRun = false;
       if (sel == MENU_AUTO) {
+        // Read actuator telemetry to verify limits
+        ActuatorTelemetry actTel;
+        bool actLimitSet[3] = {false, false, false};
+        if (xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
+            actLimitSet[0] = actTel.limitSet[0];
+            actLimitSet[1] = actTel.limitSet[1];
+            actLimitSet[2] = actTel.limitSet[2];
+        }
+
         canRun = motorLimitSet[0] && motorLimitSet[1] && motorLimitSet[2] &&
+                 actLimitSet[0] && actLimitSet[1] && actLimitSet[2] &&
                  (posOut != -1) && (posIn != -1);
       } else {
         int idx = 2;
