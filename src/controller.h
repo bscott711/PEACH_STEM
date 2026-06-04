@@ -25,6 +25,9 @@
 #define BIT_AUTO_RUNNING (1 << 1)
 #define BIT_AUTO_RESUME (1 << 2)
 #define BIT_ESTOP_REQUEST (1 << 3)
+#define BIT_POS_REACHED_Z (1 << 4)
+#define BIT_POS_REACHED_ARM (1 << 5)
+#define BIT_POS_REACHED_ACT (1 << 6)
 
 #include "core/SystemState.h"
 

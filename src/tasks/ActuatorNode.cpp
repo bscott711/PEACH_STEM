@@ -1,6 +1,8 @@
 #include "tasks/ActuatorNode.h"
 #include "drivers/HBridgeDriver.h"
+#include "controller.h"
 #include <esp_log.h>
+#include <cmath>
 
 static const char* TAG = "ACTUATOR_NODE";
 
@@ -8,7 +10,8 @@ ActuatorNode::ActuatorNode()
     : currentPercent(0.0f)
     , targetPercent(0)
     , targetSpeedPWM(255)
-    , lastSavedPercent(-1.0f) {
+    , lastSavedPercent(-1.0f)
+    , wasMoving(false) {
     limits[0] = 0; limits[1] = 0; limits[2] = 0;
     limitSet[0] = false; limitSet[1] = false; limitSet[2] = false;
 }
@@ -40,45 +43,46 @@ void ActuatorNode::processCommand(const ActuatorCommand& cmd) {
         case ActuatorCmdAction::SET_TARGET:
             targetPercent = constrain(cmd.value, 0, 100);
             targetSpeedPWM = constrain(cmd.pwmSpeed, 0, 255);
+            wasMoving = true; // Ensure event triggers even if already at target
             ESP_LOGD(TAG, "Set target: %d%%, spd: %d", targetPercent, targetSpeedPWM);
             break;
             
         case ActuatorCmdAction::SET_LIMIT_BOT:
             limits[0] = cmd.value;
             limitSet[0] = true;
-            StorageManager::saveActuatorLimitBot(limits[0], true);
+            StorageManager::saveActuatorLimit(StorageManager::LIMIT_BOT, limits[0], true);
             ESP_LOGI(TAG, "Bottom limit set to %d%%", limits[0]);
             break;
             
         case ActuatorCmdAction::SET_LIMIT_MID:
             limits[1] = cmd.value;
             limitSet[1] = true;
-            StorageManager::saveActuatorLimitMid(limits[1], true);
+            StorageManager::saveActuatorLimit(StorageManager::LIMIT_MID, limits[1], true);
             ESP_LOGI(TAG, "Middle limit set to %d%%", limits[1]);
             break;
             
         case ActuatorCmdAction::SET_LIMIT_TOP:
             limits[2] = cmd.value;
             limitSet[2] = true;
-            StorageManager::saveActuatorLimitTop(limits[2], true);
+            StorageManager::saveActuatorLimit(StorageManager::LIMIT_TOP, limits[2], true);
             ESP_LOGI(TAG, "Top limit set to %d%%", limits[2]);
             break;
             
         case ActuatorCmdAction::CLEAR_LIMIT_BOT:
             limitSet[0] = false;
-            StorageManager::saveActuatorLimitBot(limits[0], false);
+            StorageManager::saveActuatorLimit(StorageManager::LIMIT_BOT, limits[0], false);
             ESP_LOGI(TAG, "Bottom limit cleared");
             break;
             
         case ActuatorCmdAction::CLEAR_LIMIT_MID:
             limitSet[1] = false;
-            StorageManager::saveActuatorLimitMid(limits[1], false);
+            StorageManager::saveActuatorLimit(StorageManager::LIMIT_MID, limits[1], false);
             ESP_LOGI(TAG, "Middle limit cleared");
             break;
             
         case ActuatorCmdAction::CLEAR_LIMIT_TOP:
             limitSet[2] = false;
-            StorageManager::saveActuatorLimitTop(limits[2], false);
+            StorageManager::saveActuatorLimit(StorageManager::LIMIT_TOP, limits[2], false);
             ESP_LOGI(TAG, "Top limit cleared");
             break;
             
@@ -106,6 +110,7 @@ void ActuatorNode::hwUpdate() {
     float timeMs = 3000.0f; // Default safe fallback
 
     if (currentPercent < targetPercent) {
+        wasMoving = true;
         // ==========================
         // EXTENDING (Forward)
         // Measured empirical data
@@ -123,6 +128,7 @@ void ActuatorNode::hwUpdate() {
         HBridge_Set(ACT_FORWARD, targetSpeedPWM);
         
     } else if (currentPercent > targetPercent) {
+        wasMoving = true;
         // ==========================
         // RETRACTING (Reverse)
         // Measured empirical data
@@ -142,11 +148,15 @@ void ActuatorNode::hwUpdate() {
     } else {
         HBridge_Set(ACT_STOP);
         
-        // Save position to NVS if it has changed since last save
-        if (abs(currentPercent - lastSavedPercent) > 0.1f) {
-            StorageManager::saveActuatorPosition(currentPercent);    
-            lastSavedPercent = currentPercent;
-            ESP_LOGI(TAG, "Saved actuator position: %.2f%%", currentPercent);
+        if (wasMoving) {
+            // Save position to NVS if it has changed since last save
+            if (std::abs(currentPercent - lastSavedPercent) > 0.1f) {
+                StorageManager::saveActuatorPosition(currentPercent);    
+                lastSavedPercent = currentPercent;
+                ESP_LOGI(TAG, "Saved actuator position: %.2f%%", currentPercent);
+            }
+            xEventGroupSetBits(controlEvents, BIT_POS_REACHED_ACT);
+            wasMoving = false;
         }
     }
 }

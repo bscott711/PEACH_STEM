@@ -96,7 +96,7 @@ void autonomous_task(void *pvParameters) {
         
         // Only command movement if we aren't already there (prevents instant speed spikes and locking)
         bool posReached = false;
-        if (abs(targetZ - currentPos) <= 0.1f) {
+        if (std::abs(targetZ - currentPos) <= 0.1f) {
             posReached = true;
         } else {
             int goSpeed = 5000;
@@ -108,21 +108,27 @@ void autonomous_task(void *pvParameters) {
             g_motorNode.setSpeed(velocity);
         }
 
-        // Wait until position is reached or E-STOP
-        while (!posReached) {
-          ev = xEventGroupGetBits(controlEvents);
-          if (ev & BIT_ESTOP_REQUEST) {
-            aborted = true;
-            break;
-          }
-
-          if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
-            currentPos = motorTel.currentPosition;
-            if (goingUp && currentPos >= targetZ) posReached = true;
-            if (!goingUp && currentPos <= targetZ) posReached = true;
-          }
-
-          if (!posReached) vTaskDelay(pdMS_TO_TICKS(10));
+        if (!posReached) {
+            xEventGroupClearBits(controlEvents, BIT_POS_REACHED_Z);
+            while (true) {
+                EventBits_t uxBits = xEventGroupWaitBits(
+                    controlEvents, BIT_POS_REACHED_Z | BIT_ESTOP_REQUEST,
+                    pdTRUE, pdFALSE, pdMS_TO_TICKS(15000));
+                
+                if (uxBits & BIT_ESTOP_REQUEST) {
+                    xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
+                    aborted = true;
+                    break;
+                }
+                if (uxBits & BIT_POS_REACHED_Z) {
+                    posReached = true;
+                    break;
+                }
+                
+                printf("Timeout waiting for Z-axis\n");
+                aborted = true;
+                break;
+            }
         }
 
         g_motorNode.setSpeed(0);
@@ -138,22 +144,47 @@ void autonomous_task(void *pvParameters) {
           int bufferSteps = armTel.posBuffer;
           if (outSteps != -1 && inSteps != -1) {
             float targetAbs = 0;
-            if (step.target == 200 && bufferSteps != -1) {
+            if (step.target == SEQ_TARGET_BUFFER && bufferSteps != -1) {
                 targetAbs = bufferSteps;
             } else {
                 targetAbs = outSteps + (step.target / 100.0f) * (inSteps - outSteps);
             }
-            if (abs(armTel.currentPosition - targetAbs) < 10.0f) {
-              stepComplete = true; // Reached target steps
+            
+            bool posReached = false;
+            if (std::abs(armTel.currentPosition - targetAbs) < 10.0f) {
+              posReached = true;
             } else {
               int goSpeed = 5000;
               if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
                   goSpeed = systemState.armGoSpeed;
                   xSemaphoreGive(systemStateMutex);
               }
-              g_armNode.setTarget(step.target, goSpeed); // Sends target with speed
-              vTaskDelay(pdMS_TO_TICKS(50));
+              g_armNode.setTarget(step.target == SEQ_TARGET_BUFFER ? 200.0f : (float)step.target, goSpeed);
             }
+            
+            if (!posReached) {
+                xEventGroupClearBits(controlEvents, BIT_POS_REACHED_ARM);
+                while (true) {
+                    EventBits_t uxBits = xEventGroupWaitBits(
+                        controlEvents, BIT_POS_REACHED_ARM | BIT_ESTOP_REQUEST,
+                        pdTRUE, pdFALSE, pdMS_TO_TICKS(10000));
+                    
+                    if (uxBits & BIT_ESTOP_REQUEST) {
+                        xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
+                        aborted = true;
+                        break;
+                    }
+                    if (uxBits & BIT_POS_REACHED_ARM) {
+                        posReached = true;
+                        break;
+                    }
+                    
+                    printf("Timeout waiting for ARM\n");
+                    aborted = true;
+                    break;
+                }
+            }
+            if (posReached) stepComplete = true;
           } else {
             stepComplete = true; // Skip if uncalibrated
           }
@@ -175,7 +206,7 @@ void autonomous_task(void *pvParameters) {
         }
         bool zGoingUp = (targetZ > currentZPos);
         
-        if (abs(targetZ - currentZPos) <= 0.1f || (zGoingUp && currentZPos >= targetZ) || (!zGoingUp && currentZPos <= targetZ)) {
+        if (std::abs(targetZ - currentZPos) <= 0.1f) {
             zReached = true;
             g_motorNode.setSpeed(0);
         } else {
@@ -195,12 +226,12 @@ void autonomous_task(void *pvParameters) {
           int bufferSteps = armTel.posBuffer;
           if (outSteps != -1 && inSteps != -1) {
             float targetAbs = 0;
-            if (step.target == 200 && bufferSteps != -1) {
+            if (step.target == SEQ_TARGET_BUFFER && bufferSteps != -1) {
                 targetAbs = bufferSteps;
             } else {
                 targetAbs = outSteps + (step.target / 100.0f) * (inSteps - outSteps);
             }
-            if (abs(armTel.currentPosition - targetAbs) < 10.0f) {
+            if (std::abs(armTel.currentPosition - targetAbs) < 10.0f) {
               armReached = true;
             } else {
               int goSpeed = 5000;
@@ -208,17 +239,42 @@ void autonomous_task(void *pvParameters) {
                   goSpeed = systemState.armGoSpeed;
                   xSemaphoreGive(systemStateMutex);
               }
-              g_armNode.setTarget(step.target, goSpeed);
+              g_armNode.setTarget(step.target == SEQ_TARGET_BUFFER ? 200.0f : (float)step.target, goSpeed);
             }
           } else {
             armReached = true; // Skip if uncalibrated
           }
         }
 
+        xEventGroupClearBits(controlEvents, BIT_POS_REACHED_Z | BIT_POS_REACHED_ARM);
+        
+        while (!zReached || !armReached) {
+            EventBits_t waitBits = 0;
+            if (!zReached) waitBits |= BIT_POS_REACHED_Z;
+            if (!armReached) waitBits |= BIT_POS_REACHED_ARM;
+            waitBits |= BIT_ESTOP_REQUEST;
+            
+            EventBits_t uxBits = xEventGroupWaitBits(
+                controlEvents, waitBits,
+                pdTRUE, pdFALSE, pdMS_TO_TICKS(15000));
+                
+            if (uxBits & BIT_ESTOP_REQUEST) {
+                xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
+                aborted = true;
+                break;
+            }
+            if (uxBits & BIT_POS_REACHED_Z) zReached = true;
+            if (uxBits & BIT_POS_REACHED_ARM) armReached = true;
+            
+            if (!(uxBits & waitBits)) {
+                printf("Timeout waiting for ARM_AND_Z\n");
+                aborted = true;
+                break;
+            }
+        }
+        
         if (zReached && armReached) {
             stepComplete = true;
-        } else {
-            vTaskDelay(pdMS_TO_TICKS(50));
         }
         break;
       }
@@ -237,27 +293,38 @@ void autonomous_task(void *pvParameters) {
                 xSemaphoreGive(systemStateMutex);
             }
         }
-        g_actuatorNode.setTarget(targetPct, speed);
         
-        // Wait until actuator reaches the target percentage
         bool posReached = false;
-        while (!posReached) {
-          ev = xEventGroupGetBits(controlEvents);
-          if (ev & BIT_ESTOP_REQUEST) {
-            aborted = true;
-            break;
-          }
-
-          if (xQueuePeek(actuatorTelQueue, &actTel, pdMS_TO_TICKS(10)) == pdPASS) {
-            if (abs((int)actTel.currentPercent - targetPct) <= 1) {
-              posReached = true;
-            }
-          }
-
-          if (!posReached) vTaskDelay(pdMS_TO_TICKS(50));
+        if (std::abs((int)actTel.currentPercent - targetPct) <= 1) {
+          posReached = true;
         }
         
-        stepComplete = true;
+        g_actuatorNode.setTarget(targetPct, speed);
+        
+        if (!posReached) {
+            xEventGroupClearBits(controlEvents, BIT_POS_REACHED_ACT);
+            while (true) {
+                EventBits_t uxBits = xEventGroupWaitBits(
+                    controlEvents, BIT_POS_REACHED_ACT | BIT_ESTOP_REQUEST,
+                    pdTRUE, pdFALSE, pdMS_TO_TICKS(10000));
+                
+                if (uxBits & BIT_ESTOP_REQUEST) {
+                    xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
+                    aborted = true;
+                    break;
+                }
+                if (uxBits & BIT_POS_REACHED_ACT) {
+                    posReached = true;
+                    break;
+                }
+                
+                printf("Timeout waiting for Actuator\n");
+                aborted = true;
+                break;
+            }
+        }
+        
+        if (posReached) stepComplete = true;
         break;
       }
 
@@ -350,22 +417,25 @@ void motor_goto_task(void *pvParameters) {
 
   g_motorNode.setSpeed(velocity);
 
+  xEventGroupClearBits(controlEvents, BIT_POS_REACHED_Z);
   bool aborted = false;
   while (true) {
-    EventBits_t ev = xEventGroupGetBits(controlEvents);
-    if (ev & BIT_ESTOP_REQUEST) {
-      aborted = true;
-      break;
+    EventBits_t uxBits = xEventGroupWaitBits(
+        controlEvents, BIT_POS_REACHED_Z | BIT_ESTOP_REQUEST,
+        pdTRUE, pdFALSE, pdMS_TO_TICKS(15000));
+        
+    if (uxBits & BIT_ESTOP_REQUEST) {
+        xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
+        aborted = true;
+        break;
     }
-
-    if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(5)) == pdPASS) {
-      currentPos = motorTel.currentPosition;
+    if (uxBits & BIT_POS_REACHED_Z) {
+        break;
     }
-
-    if (goingUp && currentPos >= targetZ) break;
-    if (!goingUp && currentPos <= targetZ) break;
-
-    vTaskDelay(pdMS_TO_TICKS(10));
+    
+    printf("Timeout waiting for Z-axis GOTO\n");
+    aborted = true;
+    break;
   }
 
   g_motorNode.setSpeed(0);

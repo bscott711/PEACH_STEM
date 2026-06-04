@@ -3,12 +3,12 @@
 
 class StorageManager {
 public:
+    enum LimitIndex { LIMIT_BOT = 0, LIMIT_MID = 1, LIMIT_TOP = 2 };
+
     static void init();
 
     // --- Actuator ---
-    static void saveActuatorLimitBot(int limit, bool isSet);
-    static void saveActuatorLimitMid(int limit, bool isSet);
-    static void saveActuatorLimitTop(int limit, bool isSet);
+    static void saveActuatorLimit(LimitIndex idx, int limit, bool isSet);
     static void loadActuatorLimits(int limits[3], bool limitSet[3]);
     static void saveActuatorPosition(float pos);
     static float loadActuatorPosition();
@@ -18,9 +18,7 @@ public:
     static int loadActuatorGoSpeed(int defaultSpeed);
 
     // --- Motor ---
-    static void saveMotorLimitBot(float limit, bool isSet);
-    static void saveMotorLimitMid(float limit, bool isSet);
-    static void saveMotorLimitTop(float limit, bool isSet);
+    static void saveMotorLimit(LimitIndex idx, float limit, bool isSet);
     static void loadMotorLimits(float limits[3], bool limitSet[3]);
     static void saveMotorState(bool isHomed, float pos);
     static void loadMotorState(bool &isHomed, float &pos);

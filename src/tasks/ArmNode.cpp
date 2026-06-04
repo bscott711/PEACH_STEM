@@ -2,12 +2,14 @@
 #include "controller.h"
 #include "drivers/LCDDriver.h"
 #include <esp_log.h>
+#include <cmath>
 
 static const char* TAG = "ARM_NODE";
 
 ArmNode::ArmNode()
     : currentPosition(0.0f)
     , targetSpeed(0)
+    , previousTargetSpeed(0)
     , posOut(-1)
     , posIn(-1)
     , isTrackingTarget(false)
@@ -128,7 +130,7 @@ void ArmNode::hwUpdate() {
         }
         
         // Stop condition when firmly at target
-        if (abs(error) < 2.0f && abs(targetSpeed) <= 10) {
+        if (std::abs(error) < 2.0f && std::abs(targetSpeed) <= 10) {
             currentPosition = targetTrackingAbsSteps;
             targetSpeed = 0;
             isTrackingTarget = false;
@@ -190,11 +192,15 @@ void ArmNode::hwUpdate() {
     driver.setVelocity(targetSpeed);
     
     // Save position to NVS when stopped and position has changed
-    if (targetSpeed == 0 && abs(currentPosition - lastSavedPosition) > 0.1f) {
-        StorageManager::saveArmPosition(currentPosition);
-        lastSavedPosition = currentPosition;
-        ESP_LOGI(TAG, "Saved arm position: %.2f", currentPosition);
+    if (targetSpeed == 0 && previousTargetSpeed != 0) {
+        if (std::abs(currentPosition - lastSavedPosition) > 0.1f) {
+            StorageManager::saveArmPosition(currentPosition);
+            lastSavedPosition = currentPosition;
+            ESP_LOGI(TAG, "Saved arm position: %.2f", currentPosition);
+        }
+        xEventGroupSetBits(controlEvents, BIT_POS_REACHED_ARM);
     }
+    previousTargetSpeed = targetSpeed;
 }
 
 ArmTelemetry ArmNode::generateTelemetry() {

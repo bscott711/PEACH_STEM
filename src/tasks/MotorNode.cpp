@@ -1,6 +1,8 @@
 #include "tasks/MotorNode.h"
 #include "drivers/LCDDriver.h"
+#include "controller.h"
 #include <esp_log.h>
+#include <cmath>
 
 static const char* TAG = "MOTOR_NODE";
 
@@ -10,6 +12,7 @@ extern QueueHandle_t armTelQueue;
 MotorNode::MotorNode()
     : currentPosition(0.0f)
     , targetSpeed(0)
+    , previousTargetSpeed(0)
     , isHomed(false)
     , isHoming(false)
     , motorLocked(false)
@@ -68,14 +71,14 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
         case MotorCmdAction::SET_LIMIT_BOT:
             limits[0] = cmd.value;
             limitSet[0] = true;
-            StorageManager::saveMotorLimitBot(limits[0], true);
+            StorageManager::saveMotorLimit(StorageManager::LIMIT_BOT, limits[0], true);
             ESP_LOGI(TAG, "Bottom limit set to %.2f", limits[0]);
             break;
             
         case MotorCmdAction::SET_LIMIT_MID:
             limits[1] = cmd.value;
             limitSet[1] = true;
-            StorageManager::saveMotorLimitMid(limits[1], true);
+            StorageManager::saveMotorLimit(StorageManager::LIMIT_MID, limits[1], true);
             ESP_LOGI(TAG, "Middle limit set to %.2f", limits[1]);
             break;
             
@@ -83,25 +86,25 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
             currentPosition = 0.0f;
             limits[2] = 0.0f;
             limitSet[2] = true;
-            StorageManager::saveMotorLimitTop(limits[2], true);
+            StorageManager::saveMotorLimit(StorageManager::LIMIT_TOP, limits[2], true);
             ESP_LOGI(TAG, "Top limit set to 0 and position zeroed");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_BOT:
             limitSet[0] = false;
-            StorageManager::saveMotorLimitBot(limits[0], false);
+            StorageManager::saveMotorLimit(StorageManager::LIMIT_BOT, limits[0], false);
             ESP_LOGI(TAG, "Bottom limit cleared");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_MID:
             limitSet[1] = false;
-            StorageManager::saveMotorLimitMid(limits[1], false);
+            StorageManager::saveMotorLimit(StorageManager::LIMIT_MID, limits[1], false);
             ESP_LOGI(TAG, "Middle limit cleared");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_TOP:
             limitSet[2] = false;
-            StorageManager::saveMotorLimitTop(limits[2], false);
+            StorageManager::saveMotorLimit(StorageManager::LIMIT_TOP, limits[2], false);
             ESP_LOGI(TAG, "Top limit cleared");
             break;
             
@@ -197,14 +200,14 @@ void MotorNode::hwUpdate() {
         // Interlock Option A: If Arm is between Buffer and Tip, block going below Mid.
         bool swungOut = false;
         if (armCalStart != -1 && armBufferPos != -1) {
-            int distToCurrent = abs(armStepPos - armCalStart);
-            int distToBuffer = abs(armBufferPos - armCalStart);
+            int distToCurrent = std::abs(armStepPos - armCalStart);
+            int distToBuffer = std::abs(armBufferPos - armCalStart);
             if (distToCurrent > distToBuffer + 5) {
                 swungOut = true;
             }
         } else {
             // Fallback if Buffer is not set, use old 500 step rule
-            swungOut = (armCalStart != -1) && (abs(armStepPos - armCalStart) > 500); 
+            swungOut = (armCalStart != -1) && (std::abs(armStepPos - armCalStart) > 500); 
         } 
         bool usingMidAsBot = false;
         
@@ -234,7 +237,7 @@ void MotorNode::hwUpdate() {
             } else if (distToBot < 5.0f) {
                 // Deceleration zone: taper speed linearly
                 int minSpeed = 1000;
-                int maxSpeed = abs(targetSpeed);
+                int maxSpeed = std::abs(targetSpeed);
                 if (maxSpeed > minSpeed) {
                     int scaledSpeed = minSpeed + (int)((maxSpeed - minSpeed) * (distToBot / 5.0f));
                     targetSpeed = -scaledSpeed;
@@ -250,7 +253,7 @@ void MotorNode::hwUpdate() {
                 LCD_setMessage("Top Reached");
             } else if (distToTop < 5.0f) {
                 int minSpeed = 1000;
-                int maxSpeed = abs(targetSpeed);
+                int maxSpeed = std::abs(targetSpeed);
                 if (maxSpeed > minSpeed) {
                     int scaledSpeed = minSpeed + (int)((maxSpeed - minSpeed) * (distToTop / 5.0f));
                     targetSpeed = scaledSpeed;
@@ -279,13 +282,14 @@ void MotorNode::hwUpdate() {
     }
     
     // Save state when stopped and homed
-    if (targetSpeed == 0 && isHomed) {
-        static uint32_t lastSave = 0;
-        if (xTaskGetTickCount() - lastSave > pdMS_TO_TICKS(5000)) {
+    if (targetSpeed == 0 && previousTargetSpeed != 0) {
+        if (isHomed) {
             StorageManager::saveMotorState(isHomed, currentPosition);
-            lastSave = xTaskGetTickCount();
         }
+        xEventGroupSetBits(controlEvents, BIT_POS_REACHED_Z);
     }
+    
+    previousTargetSpeed = targetSpeed;
 }
 
 MotorTelemetry MotorNode::generateTelemetry() {

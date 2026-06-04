@@ -18,6 +18,7 @@ private:
     
     float currentPosition;   // Tracked absolute step position
     int targetSpeed;         // Current velocity command
+    int previousTargetSpeed;
     
     int posOut;              // Calibrated "Out" position in steps (-1 = unset)
     int posBuffer;           // Calibrated "Buffer" position in steps (-1 = unset)

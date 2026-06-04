@@ -21,5 +21,13 @@ void LCD_task(void *parameter) {
 
     // Wait until next interval mark
     vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(interval));
+
+#ifdef DEBUG_STACK
+    static uint32_t lastLog = 0;
+    if (xTaskGetTickCount() - lastLog > pdMS_TO_TICKS(5000)) {
+        printf("LCD_task stack free: %u bytes\n", uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t));
+        lastLog = xTaskGetTickCount();
+    }
+#endif
   }
 }

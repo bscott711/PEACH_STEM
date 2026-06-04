@@ -18,6 +18,7 @@ private:
     // Position tracking (float units)
     float currentPosition;
     int targetSpeed;
+    int previousTargetSpeed;
     
     // Homing and collision state
     bool isHomed;

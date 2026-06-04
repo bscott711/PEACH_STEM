@@ -16,6 +16,7 @@ private:
     int targetPercent;
     int targetSpeedPWM;
     float lastSavedPercent;
+    bool wasMoving;
     
     // Limit positions (NVS persisted)
     int limits[3];       // [0]=Bot, [1]=Mid, [2]=Top
