@@ -69,10 +69,17 @@ static void draw_peachLogo() {
   u8g2.drawLine(cx + 7, cy - r - 4, cx + 14, cy - r - 3);
 }
 
+static int fallingPeachLeafIndex = -1;
+static int currentLeaf = 0;
+static void drawBranch(int progress, float rootX, float x, float y, float len, float angle, int depth, int pathIndex);
+
 static void draw_splashScreen() {
   u8g2.clearBuffer();
 
-  draw_peachLogo();
+  currentLeaf = 0;
+  fallingPeachLeafIndex = -1;
+  drawBranch(100, 32.0f, 32.0f, 64.0f, 12.0f, 0.0f, 0, 1);
+
 
   // === Text (right of peach) ===
   u8g2.setFont(u8g2_font_helvB14_tr);
@@ -91,23 +98,25 @@ static void draw_splashScreen() {
 void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool failed) {
   u8g2.clearBuffer();
 
-  draw_peachLogo();
+  currentLeaf = 0;
+  fallingPeachLeafIndex = -1;
+  drawBranch(100, 32.0f, 32.0f, 64.0f, 12.0f, 0.0f, 0, 1);
 
   // WiFi Connection text on the right
   u8g2.setFont(u8g2_font_helvB08_tr);
-  u8g2.drawStr(50, 16, "WiFi Connect");
-  u8g2.drawHLine(50, 20, 78);
+  u8g2.drawStr(56, 16, "WiFi Connect");
+  u8g2.drawHLine(56, 20, 72);
 
   u8g2.setFont(u8g2_font_tiny5_tf);
   char ssidBuf[32];
   snprintf(ssidBuf, sizeof(ssidBuf), "SSID: %s", ssid);
-  u8g2.drawStr(50, 32, ssidBuf);
+  u8g2.drawStr(56, 32, ssidBuf);
 
-  u8g2.drawStr(50, 44, status);
+  u8g2.drawStr(56, 44, status);
 
   // Draw loading dots or fail warning
   if (failed) {
-    u8g2.drawStr(50, 56, "Rebooting in 5s...");
+    u8g2.drawStr(56, 56, "Rebooting in 5s...");
   } else {
     // Show some simple animation based on attempt
     char anim[16] = "";
@@ -115,7 +124,7 @@ void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool fai
     for (int i = 0; i < dotCount; i++) {
       strcat(anim, ".");
     }
-    u8g2.drawStr(50, 56, anim);
+    u8g2.drawStr(56, 56, anim);
   }
 
   u8g2.sendBuffer();
@@ -133,10 +142,8 @@ static float clamp(float val, float min, float max) {
   return val;
 }
 
-static int fallingPeachPathIndex = -1;
-
 // Recursive function to draw the tree dynamically
-static void drawBranch(int progress, float x, float y, float len, float angle, int depth, int pathIndex) {
+static void drawBranch(int progress, float rootX, float x, float y, float len, float angle, int depth, int pathIndex) {
   const int maxDepth = 4; // Max depth 4 for 128x64 screen performance
 
   // Calculate the timing for this specific depth
@@ -169,13 +176,13 @@ static void drawBranch(int progress, float x, float y, float len, float angle, i
       float rightAngleMod = 0.45f + hash_fn(pathIndex, 4) * 0.4f;
 
       // Spawn left and right children
-      drawBranch(progress, endX, endY, len * leftLenMod, angle - leftAngleMod, depth + 1, pathIndex * 2);
-      drawBranch(progress, endX, endY, len * rightLenMod, angle + rightAngleMod, depth + 1, pathIndex * 2 + 1);
+      drawBranch(progress, rootX, endX, endY, len * leftLenMod, angle - leftAngleMod, depth + 1, pathIndex * 2);
+      drawBranch(progress, rootX, endX, endY, len * rightLenMod, angle + rightAngleMod, depth + 1, pathIndex * 2 + 1);
 
       // Occasionally spawn a middle branch for organic density
       // Increased probability of middle branch for a fuller tree
       if (hash_fn(pathIndex, 5) > 0.5f) { 
-         drawBranch(progress, endX, endY, len * 0.5f, angle + (hash_fn(pathIndex, 6) * 0.2f - 0.1f), depth + 1, pathIndex * 2 + 2);
+         drawBranch(progress, rootX, endX, endY, len * 0.5f, angle + (hash_fn(pathIndex, 6) * 0.2f - 0.1f), depth + 1, pathIndex * 2 + 2);
       }
     }
 
@@ -197,35 +204,39 @@ static void drawBranch(int progress, float x, float y, float len, float angle, i
     }
 
     // --- STAGE 4: The Peaches (80% - 100%) ---
-    if (depth == maxDepth && progress > 80) {
-      // Only spawn peaches on certain branches (around 3-4 total)
-      if (hash_fn(pathIndex, 9) > 0.85f) {
-        float peachGrowth = clamp((progress - 80.0f) / 10.0f, 0.0f, 1.0f); // Grow faster (80-90)
-        
-        float pY = endY;
-        
-        // Pick the first peach that is far enough from the center to be the falling peach
-        if (fallingPeachPathIndex == -1 && abs((int)endX - 64) > 12) {
-            fallingPeachPathIndex = pathIndex;
-        }
-        
-        // Peach falling animation (90% - 100%)
-        if (progress > 90 && pathIndex == fallingPeachPathIndex) {
-             float fallProgress = clamp((progress - 90.0f) / 10.0f, 0.0f, 1.0f);
-             // Quadratic fall: distance = 1/2 * g * t^2
-             pY += (62.0f - endY) * fallProgress * fallProgress; 
-             // Stop at ground
-             if (pY > 60.0f) pY = 60.0f;
-        }
+    if (depth == maxDepth) {
+      currentLeaf++;
+      
+      // Only spawn exactly three peaches
+      if (currentLeaf == 8 || currentLeaf == 25 || currentLeaf == 45) {
+        if (progress > 80) {
+          float peachGrowth = clamp((progress - 80.0f) / 10.0f, 0.0f, 1.0f); // Grow faster (80-90)
+          
+          float pY = endY;
+          
+          // Pick the first peach that is far enough from the center to be the falling peach
+          if (fallingPeachLeafIndex == -1 && abs((int)endX - (int)rootX) > 12) {
+              fallingPeachLeafIndex = currentLeaf;
+          }
+          
+          // Peach falling animation (90% - 100%)
+          if (progress > 90 && currentLeaf == fallingPeachLeafIndex) {
+               float fallProgress = clamp((progress - 90.0f) / 10.0f, 0.0f, 1.0f);
+               // Quadratic fall: distance = 1/2 * g * t^2
+               pY += (62.0f - endY) * fallProgress * fallProgress; 
+               // Stop at ground
+               if (pY > 60.0f) pY = 60.0f;
+          }
 
-        if (peachGrowth > 0) {
-          int radius = (int)(4.0f * peachGrowth); // slightly smaller peaches
-          if (radius > 0) {
-              // Draw small peach body (circle with cleft line)
-              u8g2.drawDisc((int)endX, (int)pY, radius);
-              u8g2.setDrawColor(0);
-              u8g2.drawLine((int)endX, (int)(pY - radius), (int)endX, (int)(pY + radius - 1));
-              u8g2.setDrawColor(1);
+          if (peachGrowth > 0) {
+            int radius = (int)(4.0f * peachGrowth); // slightly smaller peaches
+            if (radius > 0) {
+                // Draw small peach body (circle with cleft line)
+                u8g2.drawDisc((int)endX, (int)pY, radius);
+                u8g2.setDrawColor(0);
+                u8g2.drawLine((int)endX, (int)(pY - radius), (int)endX, (int)(pY + radius - 1));
+                u8g2.setDrawColor(1);
+            }
           }
         }
       }
@@ -240,14 +251,15 @@ void draw_otaScreen() {
   const char* otaStatus = NetworkManager::getOTAStatus();
 
   // Reset falling peach tracker for this frame
-  fallingPeachPathIndex = -1;
+  fallingPeachLeafIndex = -1;
+  currentLeaf = 0;
 
   // Draw the growing tree!
   int startX = 64; // Center
   int startY = 64; // Bottom of screen
   float baseTrunkLength = 12.0f; // Shorter trunk
   
-  drawBranch(otaProgress, startX, startY, baseTrunkLength, 0.0f, 0, 1);
+  drawBranch(otaProgress, startX, startX, startY, baseTrunkLength, 0.0f, 0, 1);
 
   // UI Overlay - Top Left
   u8g2.setFont(u8g2_font_tiny5_tf);
