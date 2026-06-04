@@ -1,6 +1,6 @@
-![PEACH PIT Header](HEADER.png)
-
 # PEACH PIT - Robotic Cell Dropper
+
+![PEACH PIT Header](HEADER.png)
 
 An ESP32-based embedded control system for automated laboratory cell handling with precision motion control.
 
