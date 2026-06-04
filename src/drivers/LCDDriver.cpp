@@ -336,7 +336,7 @@ static void draw_buttonStatus(const UIData& data) {
   }
 }
 
-static const char* s4Level0Names[] = {"Arm", "Act", "Z", "Auto"};
+static const char* s4Level0Names[] = {"Arm", "Act", "Z", "Auto", "Shutdown"};
 static const char* s4ArmSubNames[] = {"Tip", "Buf", "Clr", "JogSpd", "GoSpd", "Back"};
 static const char* s4PosSubNames[] = {"Top", "Mid", "Bot", "JogSpd", "GoSpd", "Back"};
 

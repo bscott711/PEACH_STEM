@@ -6,7 +6,7 @@ enum DeviceMode { IDLE, PICKUP_CELL, DROPOFF_CELL };
 enum ActuatorDirection { ACT_STOP = 0, ACT_FORWARD, ACT_REVERSE };
 
 // --- S4 Hierarchical Menu ---
-enum S4Level0 { S4_ARM, S4_ACT, S4_Z, S4_AUTO, S4_LEVEL0_COUNT };
+enum S4Level0 { S4_ARM, S4_ACT, S4_Z, S4_AUTO, S4_STOP, S4_LEVEL0_COUNT };
 
 // Sub-menu indices for Arm
 #define S4_ARM_TIP     0
@@ -35,7 +35,8 @@ enum SequenceAction {
   SEQ_MOVE_ARM,      // Move Arm
   SEQ_MOVE_ACTUATOR, // Set actuator to target percent
   SEQ_WAIT_MS,       // Interruptible delay (target = milliseconds)
-  SEQ_WAIT_USER      // Wait for user button press to continue
+  SEQ_WAIT_USER,     // Wait for user button press to continue
+  SEQ_MOVE_ARM_AND_Z // Move Arm to target percent and Z to limitIdx simultaneously
 };
 
 struct SequenceStep {

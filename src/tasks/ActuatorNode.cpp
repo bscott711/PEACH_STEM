@@ -88,25 +88,57 @@ void ActuatorNode::processCommand(const ActuatorCommand& cmd) {
     }
 }
 
-void ActuatorNode::hwUpdate() {
-    float maxPctPerTick = (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / (float)FULL_EXTEND_TIME_MS;
-    float pwmRatio = (float)targetSpeedPWM / 255.0f;
-    // Square the ratio to better approximate DC motor non-linearity under load
-    float dynamicPctPerTick = maxPctPerTick * (pwmRatio * pwmRatio);
+// Helper function for empirical piecewise linear interpolation
+static float interpolateTime(int pwm, const int pwms[], const float times[], int size) {
+    if (pwm <= pwms[0]) return times[0];
+    if (pwm >= pwms[size - 1]) return times[size - 1];
+    
+    for (int i = 0; i < size - 1; i++) {
+        if (pwm >= pwms[i] && pwm <= pwms[i+1]) {
+            float t = (float)(pwm - pwms[i]) / (float)(pwms[i+1] - pwms[i]);
+            return times[i] + t * (times[i+1] - times[i]);
+        }
+    }
+    return times[size - 1];
+}
 
-    // Non-blocking movement evaluation with float-based ramping
+void ActuatorNode::hwUpdate() {
+    float timeMs = 3000.0f; // Default safe fallback
+
     if (currentPercent < targetPercent) {
+        // ==========================
+        // EXTENDING (Forward)
+        // Measured empirical data
+        // ==========================
+        const int pwms[] = {155, 165, 175, 205, 255};
+        const float times[] = {6000.0f, 4000.0f, 3000.0f, 1800.0f, 800.0f};
+        timeMs = interpolateTime(targetSpeedPWM, pwms, times, 5);
+        
+        float dynamicPctPerTick = (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / timeMs;
         currentPercent += dynamicPctPerTick;
+        
         if (currentPercent > targetPercent) {
             currentPercent = targetPercent;  // Clamp exact arrival
         }
         HBridge_Set(ACT_FORWARD, targetSpeedPWM);
+        
     } else if (currentPercent > targetPercent) {
+        // ==========================
+        // RETRACTING (Reverse)
+        // Measured empirical data
+        // ==========================
+        const int pwms[] = {155, 175, 205, 255};
+        const float times[] = {3000.0f, 3000.0f, 1500.0f, 800.0f};
+        timeMs = interpolateTime(targetSpeedPWM, pwms, times, 4);
+        
+        float dynamicPctPerTick = (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / timeMs;
         currentPercent -= dynamicPctPerTick;
+        
         if (currentPercent < targetPercent) {
             currentPercent = targetPercent;  // Clamp exact arrival
         }
         HBridge_Set(ACT_REVERSE, targetSpeedPWM);
+        
     } else {
         HBridge_Set(ACT_STOP);
         

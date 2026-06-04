@@ -80,10 +80,11 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
             break;
             
         case MotorCmdAction::SET_LIMIT_TOP:
-            limits[2] = cmd.value;
+            currentPosition = 0.0f;
+            limits[2] = 0.0f;
             limitSet[2] = true;
             StorageManager::saveMotorLimitTop(limits[2], true);
-            ESP_LOGI(TAG, "Top limit set to %.2f", limits[2]);
+            ESP_LOGI(TAG, "Top limit set to 0 and position zeroed");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_BOT:

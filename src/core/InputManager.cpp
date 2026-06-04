@@ -379,7 +379,7 @@ void InputManager::handleMenuEncoder() {
         
         if (canRun) {
           TaskHandle_t autoTaskHandle = NULL;
-          if (xTaskCreate(autonomous_task, "AutoTask", 4096, NULL, 2,
+          if (xTaskCreate(autonomous_task, "AutoTask", 4096, (void*)0, 2,
                           &autoTaskHandle) == pdPASS) {
             xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
           } else {
@@ -388,6 +388,15 @@ void InputManager::handleMenuEncoder() {
           }
         } else {
           LCD_setMessage("Missing Limits");
+        }
+      } else if (systemState.s4Menu == S4_STOP) {
+        TaskHandle_t autoTaskHandle = NULL;
+        if (xTaskCreate(autonomous_task, "AutoTask", 4096, (void*)1, 2,
+                        &autoTaskHandle) == pdPASS) {
+          xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
+        } else {
+          LCD_setMessage("Error: Task Failed");
+          ESP_LOGE("MENU", "Failed to create shutdown task");
         }
       } else {
         // Enter sub-menu for Arm/Act/Z
@@ -560,8 +569,12 @@ void InputManager::handleMenuEncoder() {
         printf("Arm Buffer (posBuffer) set at current position\n");
       } else if (item == S4_ARM_CLEAR) {
         g_armNode.setPosOut();
+        if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            g_encoderState.position[0] = 0;
+            xSemaphoreGive(encoderStateMutex);
+        }
         LCD_setMessage("Arm: Clear Set");
-        printf("Arm Clear (posOut) set at current position\n");
+        printf("Arm Clear (posOut) set at current position, encoder zeroed\n");
       }
     } else if (axis == S4_ACT) {
       int pct = (int)actTel.currentPercent;
@@ -571,7 +584,13 @@ void InputManager::handleMenuEncoder() {
       LCD_setMessage("Act: Position Set");
       printf("Actuator limit %d set to %d%%\n", item, pct);
     } else if (axis == S4_Z) {
-      if (item == S4_POS_TOP) g_motorNode.setLimitTop(motorCurrentPos);
+      if (item == S4_POS_TOP) {
+          g_motorNode.setLimitTop(motorCurrentPos);
+          if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+              g_encoderState.position[2] = 0;
+              xSemaphoreGive(encoderStateMutex);
+          }
+      }
       else if (item == S4_POS_MID) g_motorNode.setLimitMid(motorCurrentPos);
       else if (item == S4_POS_BOT) g_motorNode.setLimitBot(motorCurrentPos);
       LCD_setMessage("Z: Position Set");

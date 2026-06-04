@@ -25,6 +25,7 @@ private:
     
     // Motion parameters
     static constexpr uint32_t FULL_EXTEND_TIME_MS = 800;  // Time 0% to 100%
+    static constexpr uint8_t MIN_ACTUATOR_PWM = 155;      // Deadband: Minimum PWM required to physically move the actuator
     
 public:
     ActuatorNode();

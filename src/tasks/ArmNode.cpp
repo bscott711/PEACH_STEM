@@ -55,10 +55,15 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             
         case ArmCmdAction::SET_TARGET:
             if (posOut != -1 && posIn != -1) {
-                targetTrackingAbsSteps = posOut + (cmd.value / 100.0f) * (posIn - posOut);
+                if (cmd.value == 200.0f && posBuffer != -1) {
+                    targetTrackingAbsSteps = posBuffer;
+                    ESP_LOGI(TAG, "Arm tracking target: Buffer -> %.2f steps at speed %d", targetTrackingAbsSteps, cmd.targetSpeed);
+                } else {
+                    targetTrackingAbsSteps = posOut + (cmd.value / 100.0f) * (posIn - posOut);
+                    ESP_LOGI(TAG, "Arm tracking target: %.2f%% -> %.2f steps at speed %d", cmd.value, targetTrackingAbsSteps, cmd.targetSpeed);
+                }
                 targetTrackingSpeed = cmd.targetSpeed;
                 isTrackingTarget = true;
-                ESP_LOGI(TAG, "Arm tracking target: %.2f%% -> %.2f steps at speed %d", cmd.value, targetTrackingAbsSteps, targetTrackingSpeed);
             } else {
                 ESP_LOGW(TAG, "Arm SET_TARGET ignored: Uncalibrated!");
             }
@@ -73,9 +78,10 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             break;
             
         case ArmCmdAction::SET_POS_OUT:
-            posOut = (int)currentPosition;
+            currentPosition = 0.0f;
+            posOut = 0;
             StorageManager::saveArmPosOut(posOut);
-            ESP_LOGI(TAG, "Arm posOut set to %d", posOut);
+            ESP_LOGI(TAG, "Arm posOut set to 0 and position zeroed");
             break;
             
         case ArmCmdAction::SET_POS_BUFFER:
