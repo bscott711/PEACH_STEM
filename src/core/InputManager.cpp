@@ -557,7 +557,7 @@ void InputManager::handleMenuEncoder() {
   }
 
   // ---- Long Press: SET current position ----
-  if (longPress && !isBack) {
+  if (longPress && !isBack && systemState.s4InSubMenu) {
     if (axis == S4_ARM) {
       if (item == S4_ARM_TIP) {
         g_armNode.setPosIn();
@@ -591,7 +591,7 @@ void InputManager::handleMenuEncoder() {
   }
 
   // ---- Double Press: CLEAR position ----
-  if (doublePress && !isBack) {
+  if (doublePress && !isBack && systemState.s4InSubMenu) {
     if (axis == S4_ARM) {
       // Clear both arm calibration points
       g_armNode.clearCal();

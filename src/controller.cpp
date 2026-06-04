@@ -33,7 +33,7 @@ SemaphoreHandle_t tmcUartMutex;
 EventGroupHandle_t controlEvents;
 
 SystemState systemState = {.mode = IDLE,
-                           .s4Menu = S4_ARM,
+                           .s4Menu = S4_STOP,
                            .s4SubMenu = 0,
                            .s4InSubMenu = false,
                            .s4InSpeedEdit = false,
@@ -57,7 +57,7 @@ void initSystemState() {
   // Initialize minimal state - subsystem state is managed by Active Nodes
   if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
     systemState.mode = IDLE;
-    systemState.s4Menu = S4_ARM;
+    systemState.s4Menu = S4_STOP;
     systemState.s4SubMenu = 0;
     systemState.s4InSubMenu = false;
     systemState.s4InSpeedEdit = false;

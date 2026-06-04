@@ -6,7 +6,7 @@ enum DeviceMode { IDLE, PICKUP_CELL, DROPOFF_CELL };
 enum ActuatorDirection { ACT_STOP = 0, ACT_FORWARD, ACT_REVERSE };
 
 // --- S4 Hierarchical Menu ---
-enum S4Level0 { S4_ARM, S4_ACT, S4_Z, S4_AUTO, S4_STOP, S4_LEVEL0_COUNT };
+enum S4Level0 { S4_STOP, S4_ARM, S4_ACT, S4_Z, S4_AUTO, S4_LEVEL0_COUNT };
 
 // Sub-menu indices for Arm
 #define S4_ARM_TIP     0
