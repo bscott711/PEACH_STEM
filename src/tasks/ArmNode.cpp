@@ -1,6 +1,7 @@
 #include "tasks/ArmNode.h"
 #include "controller.h"
 #include "drivers/LCDDriver.h"
+#include "core/NetworkManager.h"
 #include <esp_log.h>
 #include <cmath>
 
@@ -35,7 +36,7 @@ void ArmNode::hwInit() {
     currentPosition = lastPos;
     lastSavedPosition = lastPos;
     
-    ESP_LOGI(TAG, "Loaded calibration: Out=%d, Buf=%d, In=%d, Pos=%.1f", posOut, posBuffer, posIn, lastPos);
+    PEACH_LOGI(TAG, "Loaded calibration: Out=%d, Buf=%d, In=%d, Pos=%.1f", posOut, posBuffer, posIn, lastPos);
 }
 
 void ArmNode::processCommand(const ArmCommand& cmd) {
@@ -43,7 +44,7 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
         case ArmCmdAction::SET_SPEED:
             targetSpeed = (int)cmd.value;
             isTrackingTarget = false;
-            ESP_LOGD(TAG, "Arm set speed: %d", targetSpeed);
+            PEACH_LOGD(TAG, "Arm set speed: %d", targetSpeed);
             break;
             
         case ArmCmdAction::STOP:
@@ -51,7 +52,7 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             // Don't clear isTrackingTarget — if we were tracking, the 
             // P-controller in hwUpdate will resume. STOP is for jog mode only.
             if (!isTrackingTarget) {
-                ESP_LOGD(TAG, "Arm stopped");
+                PEACH_LOGD(TAG, "Arm stopped");
             }
             break;
             
@@ -59,15 +60,15 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             if (posOut != -1 && posIn != -1) {
                 if (cmd.value == 200.0f && posBuffer != -1) {
                     targetTrackingAbsSteps = posBuffer;
-                    ESP_LOGI(TAG, "Arm tracking target: Buffer -> %.2f steps at speed %d", targetTrackingAbsSteps, cmd.targetSpeed);
+                    PEACH_LOGI(TAG, "Arm tracking target: Buffer -> %.2f steps at speed %d", targetTrackingAbsSteps, cmd.targetSpeed);
                 } else {
                     targetTrackingAbsSteps = posOut + (cmd.value / 100.0f) * (posIn - posOut);
-                    ESP_LOGI(TAG, "Arm tracking target: %.2f%% -> %.2f steps at speed %d", cmd.value, targetTrackingAbsSteps, cmd.targetSpeed);
+                    PEACH_LOGI(TAG, "Arm tracking target: %.2f%% -> %.2f steps at speed %d", cmd.value, targetTrackingAbsSteps, cmd.targetSpeed);
                 }
                 targetTrackingSpeed = cmd.targetSpeed;
                 isTrackingTarget = true;
             } else {
-                ESP_LOGW(TAG, "Arm SET_TARGET ignored: Uncalibrated!");
+                PEACH_LOGW(TAG, "Arm SET_TARGET ignored: Uncalibrated!");
             }
             break;
             
@@ -83,19 +84,19 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             currentPosition = 0.0f;
             posOut = 0;
             StorageManager::saveArmPosOut(posOut);
-            ESP_LOGI(TAG, "Arm posOut set to 0 and position zeroed");
+            PEACH_LOGI(TAG, "Arm posOut set to 0 and position zeroed");
             break;
             
         case ArmCmdAction::SET_POS_BUFFER:
             posBuffer = (int)currentPosition;
             StorageManager::saveArmPosBuffer(posBuffer);
-            ESP_LOGI(TAG, "Arm posBuffer set to %d", posBuffer);
+            PEACH_LOGI(TAG, "Arm posBuffer set to %d", posBuffer);
             break;
             
         case ArmCmdAction::SET_POS_IN:
             posIn = (int)currentPosition;
             StorageManager::saveArmPosIn(posIn);
-            ESP_LOGI(TAG, "Arm posIn set to %d", posIn);
+            PEACH_LOGI(TAG, "Arm posIn set to %d", posIn);
             break;
             
         case ArmCmdAction::CLEAR_CAL:
@@ -105,7 +106,7 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             StorageManager::saveArmPosOut(-1);
             StorageManager::saveArmPosBuffer(-1);
             StorageManager::saveArmPosIn(-1);
-            ESP_LOGI(TAG, "Arm calibration cleared");
+            PEACH_LOGI(TAG, "Arm calibration cleared");
             break;
     }
 }
@@ -196,7 +197,7 @@ void ArmNode::hwUpdate() {
         if (std::abs(currentPosition - lastSavedPosition) > 0.1f) {
             StorageManager::saveArmPosition(currentPosition);
             lastSavedPosition = currentPosition;
-            ESP_LOGI(TAG, "Saved arm position: %.2f", currentPosition);
+            PEACH_LOGI(TAG, "Saved arm position: %.2f", currentPosition);
         }
         xEventGroupSetBits(controlEvents, BIT_POS_REACHED_ARM);
     }

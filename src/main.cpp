@@ -50,11 +50,11 @@ void setup() {
 
   // 1. Start Active Motion Nodes
   if (!g_motorNode.start("MotorNode", 4096, 2))
-    ESP_LOGE("MAIN", "Failed MotorNode");
+    PEACH_LOGE("MAIN", "Failed MotorNode");
   if (!g_actuatorNode.start("ActuatorNode", 4096, 2))
-    ESP_LOGE("MAIN", "Failed ActuatorNode");
+    PEACH_LOGE("MAIN", "Failed ActuatorNode");
   if (!g_armNode.start("ArmNode", 4096, 2))
-    ESP_LOGE("MAIN", "Failed ArmNode");
+    PEACH_LOGE("MAIN", "Failed ArmNode");
 
   // 2. Link the global messaging queues
   armCmdQueue = g_armNode.getCmdQueue();

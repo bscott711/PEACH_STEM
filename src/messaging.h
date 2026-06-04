@@ -74,6 +74,7 @@ extern QueueHandle_t actuatorTelQueue;
 
 enum class MotorCmdAction {
     SET_SPEED,       // Set velocity (int steps/s)
+    SET_TARGET,      // Move to absolute position
     SET_LIMIT_BOT,   // Save current position as bottom limit
     SET_LIMIT_MID,   // Save current position as middle limit
     SET_LIMIT_TOP,   // Save current position as top limit
@@ -87,6 +88,7 @@ enum class MotorCmdAction {
 struct MotorCommand {
     MotorCmdAction action;
     float value;     // Speed or position value
+    int targetSpeed; // Optional speed for GOTO
 };
 
 struct MotorTelemetry {

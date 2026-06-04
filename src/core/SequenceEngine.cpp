@@ -92,7 +92,6 @@ void autonomous_task(void *pvParameters) {
 
         // Determine direction
         bool goingUp = (targetZ > currentPos);
-        int velocity = 0;
         
         // Only command movement if we aren't already there (prevents instant speed spikes and locking)
         bool posReached = false;
@@ -104,8 +103,7 @@ void autonomous_task(void *pvParameters) {
                 goSpeed = systemState.zGoSpeed;
                 xSemaphoreGive(systemStateMutex);
             }
-            velocity = goingUp ? goSpeed : -goSpeed;
-            g_motorNode.setSpeed(velocity);
+            g_motorNode.setTarget(targetZ, goSpeed);
         }
 
         if (!posReached) {
@@ -113,7 +111,7 @@ void autonomous_task(void *pvParameters) {
             while (true) {
                 EventBits_t uxBits = xEventGroupWaitBits(
                     controlEvents, BIT_POS_REACHED_Z | BIT_ESTOP_REQUEST,
-                    pdTRUE, pdFALSE, pdMS_TO_TICKS(15000));
+                    pdTRUE, pdFALSE, portMAX_DELAY);
                 
                 if (uxBits & BIT_ESTOP_REQUEST) {
                     xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
@@ -167,7 +165,7 @@ void autonomous_task(void *pvParameters) {
                 while (true) {
                     EventBits_t uxBits = xEventGroupWaitBits(
                         controlEvents, BIT_POS_REACHED_ARM | BIT_ESTOP_REQUEST,
-                        pdTRUE, pdFALSE, pdMS_TO_TICKS(10000));
+                        pdTRUE, pdFALSE, portMAX_DELAY);
                     
                     if (uxBits & BIT_ESTOP_REQUEST) {
                         xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
@@ -215,7 +213,7 @@ void autonomous_task(void *pvParameters) {
                 goSpeed = systemState.zGoSpeed;
                 xSemaphoreGive(systemStateMutex);
             }
-            g_motorNode.setSpeed(zGoingUp ? goSpeed : -goSpeed);
+            g_motorNode.setTarget(targetZ, goSpeed);
         }
 
         // --- Arm Logic ---
@@ -256,7 +254,7 @@ void autonomous_task(void *pvParameters) {
             
             EventBits_t uxBits = xEventGroupWaitBits(
                 controlEvents, waitBits,
-                pdTRUE, pdFALSE, pdMS_TO_TICKS(15000));
+                pdTRUE, pdFALSE, portMAX_DELAY);
                 
             if (uxBits & BIT_ESTOP_REQUEST) {
                 xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
@@ -306,7 +304,7 @@ void autonomous_task(void *pvParameters) {
             while (true) {
                 EventBits_t uxBits = xEventGroupWaitBits(
                     controlEvents, BIT_POS_REACHED_ACT | BIT_ESTOP_REQUEST,
-                    pdTRUE, pdFALSE, pdMS_TO_TICKS(10000));
+                    pdTRUE, pdFALSE, portMAX_DELAY);
                 
                 if (uxBits & BIT_ESTOP_REQUEST) {
                     xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);
@@ -412,17 +410,14 @@ void motor_goto_task(void *pvParameters) {
     xSemaphoreGive(systemStateMutex);
   }
 
-  int velocity = (targetZ > currentPos) ? autoSpeed : -autoSpeed;
-  bool goingUp = (velocity > 0);
-
-  g_motorNode.setSpeed(velocity);
+  g_motorNode.setTarget(targetZ, autoSpeed);
 
   xEventGroupClearBits(controlEvents, BIT_POS_REACHED_Z);
   bool aborted = false;
   while (true) {
     EventBits_t uxBits = xEventGroupWaitBits(
         controlEvents, BIT_POS_REACHED_Z | BIT_ESTOP_REQUEST,
-        pdTRUE, pdFALSE, pdMS_TO_TICKS(15000));
+        pdTRUE, pdFALSE, portMAX_DELAY);
         
     if (uxBits & BIT_ESTOP_REQUEST) {
         xEventGroupSetBits(controlEvents, BIT_ESTOP_REQUEST);

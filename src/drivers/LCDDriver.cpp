@@ -5,8 +5,10 @@
 #include "freertos/semphr.h"
 #include <cstdio>
 #include <cstring>
-#include <esp_log.h>
 #include "core/NetworkManager.h"
+#include "HardwareConfig.h"
+#include "controller.h"
+#include <U8g2lib.h>
 
 /**
  * Mutex Lock Order Protocol (ALWAYS acquire in this order to prevent deadlock):
@@ -276,7 +278,7 @@ void LCDInit() {
 
   lcdMutex = xSemaphoreCreateMutex();
   if (lcdMutex == NULL) {
-    ESP_LOGE("LCD", "Failed to create LCD string mutex");
+    PEACH_LOGE("LCD", "Failed to create LCD string mutex");
   }
 
   // Show splash screen for 2.5 seconds
@@ -296,7 +298,7 @@ void LCD_setMessage(const char *msg) {
     lcdMessagePending = true;
     xSemaphoreGive(lcdMutex);
   } else {
-    ESP_LOGW("LCD", "Mutex timeout setting message");
+    PEACH_LOGW("LCD", "Mutex timeout setting message");
   }
 }
 

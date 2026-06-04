@@ -1,7 +1,7 @@
 #include "tasks/ActuatorNode.h"
 #include "drivers/HBridgeDriver.h"
 #include "controller.h"
-#include <esp_log.h>
+#include "core/NetworkManager.h"
 #include <cmath>
 
 static const char* TAG = "ACTUATOR_NODE";
@@ -31,7 +31,7 @@ void ActuatorNode::hwInit() {
     targetPercent = (int)currentPercent;
     lastSavedPercent = lastPos;
     
-    ESP_LOGI(TAG, "Loaded limits: Bot=%d(%s), Mid=%d(%s), Top=%d(%s), Pos=%.1f",
+    PEACH_LOGI(TAG, "Loaded limits: Bot=%d(%s), Mid=%d(%s), Top=%d(%s), Pos=%.1f",
              limits[0], limitSet[0] ? "Y" : "N",
              limits[1], limitSet[1] ? "Y" : "N",
              limits[2], limitSet[2] ? "Y" : "N",
@@ -44,46 +44,46 @@ void ActuatorNode::processCommand(const ActuatorCommand& cmd) {
             targetPercent = constrain(cmd.value, 0, 100);
             targetSpeedPWM = constrain(cmd.pwmSpeed, 0, 255);
             wasMoving = true; // Ensure event triggers even if already at target
-            ESP_LOGD(TAG, "Set target: %d%%, spd: %d", targetPercent, targetSpeedPWM);
+            PEACH_LOGD(TAG, "Set target: %d%%, spd: %d", targetPercent, targetSpeedPWM);
             break;
             
         case ActuatorCmdAction::SET_LIMIT_BOT:
             limits[0] = cmd.value;
             limitSet[0] = true;
             StorageManager::saveActuatorLimit(StorageManager::LIMIT_BOT, limits[0], true);
-            ESP_LOGI(TAG, "Bottom limit set to %d%%", limits[0]);
+            PEACH_LOGI(TAG, "Bottom limit set to %d%%", limits[0]);
             break;
             
         case ActuatorCmdAction::SET_LIMIT_MID:
             limits[1] = cmd.value;
             limitSet[1] = true;
             StorageManager::saveActuatorLimit(StorageManager::LIMIT_MID, limits[1], true);
-            ESP_LOGI(TAG, "Middle limit set to %d%%", limits[1]);
+            PEACH_LOGI(TAG, "Middle limit set to %d%%", limits[1]);
             break;
             
         case ActuatorCmdAction::SET_LIMIT_TOP:
             limits[2] = cmd.value;
             limitSet[2] = true;
             StorageManager::saveActuatorLimit(StorageManager::LIMIT_TOP, limits[2], true);
-            ESP_LOGI(TAG, "Top limit set to %d%%", limits[2]);
+            PEACH_LOGI(TAG, "Top limit set to %d%%", limits[2]);
             break;
             
         case ActuatorCmdAction::CLEAR_LIMIT_BOT:
             limitSet[0] = false;
             StorageManager::saveActuatorLimit(StorageManager::LIMIT_BOT, limits[0], false);
-            ESP_LOGI(TAG, "Bottom limit cleared");
+            PEACH_LOGI(TAG, "Bottom limit cleared");
             break;
             
         case ActuatorCmdAction::CLEAR_LIMIT_MID:
             limitSet[1] = false;
             StorageManager::saveActuatorLimit(StorageManager::LIMIT_MID, limits[1], false);
-            ESP_LOGI(TAG, "Middle limit cleared");
+            PEACH_LOGI(TAG, "Middle limit cleared");
             break;
             
         case ActuatorCmdAction::CLEAR_LIMIT_TOP:
             limitSet[2] = false;
             StorageManager::saveActuatorLimit(StorageManager::LIMIT_TOP, limits[2], false);
-            ESP_LOGI(TAG, "Top limit cleared");
+            PEACH_LOGI(TAG, "Top limit cleared");
             break;
             
         case ActuatorCmdAction::GET_LIMITS:
@@ -153,7 +153,7 @@ void ActuatorNode::hwUpdate() {
             if (std::abs(currentPercent - lastSavedPercent) > 0.1f) {
                 StorageManager::saveActuatorPosition(currentPercent);    
                 lastSavedPercent = currentPercent;
-                ESP_LOGI(TAG, "Saved actuator position: %.2f%%", currentPercent);
+                PEACH_LOGI(TAG, "Saved actuator position: %.2f%%", currentPercent);
             }
             xEventGroupSetBits(controlEvents, BIT_POS_REACHED_ACT);
             wasMoving = false;

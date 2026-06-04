@@ -1,5 +1,6 @@
 #include "core/StorageManager.h"
 #include <Preferences.h>
+#include "core/NetworkManager.h"
 #include "esp_log.h"
 #include <array>
 
@@ -8,7 +9,7 @@ static Preferences prefs;
 
 void StorageManager::init() {
     if (!prefs.begin("peach", false)) {
-        ESP_LOGE(TAG, "Failed to open NVS namespace on init");
+        PEACH_LOGE(TAG, "Failed to open NVS namespace on init");
     }
 }
 

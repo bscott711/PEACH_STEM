@@ -28,6 +28,9 @@ private:
     // Optical endstop states
     bool topEndstopTriggered;
     bool botEndstopTriggered;
+
+    float trackingTarget; // Absolute position target for GOTO
+    bool isTrackingTarget; // True if GOTO active
     
     // Limit positions (NVS persisted)
     float limits[3];     // [0]=Bot, [1]=Mid, [2]=Top
@@ -57,7 +60,8 @@ public:
     MotorTelemetry generateTelemetry() override;
     
     // Convenience methods for sending commands
-    bool setSpeed(int speed);
+    bool setSpeed(int speed); // Note: Set speed to 0 for E-STOP
+    bool setTarget(float position, int speed); // Note: Set speed > 0, direction is auto-calculated
     bool startHoming();
     bool setLimitBot(float position);
     bool setLimitMid(float position);

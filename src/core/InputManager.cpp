@@ -7,7 +7,7 @@
 #include "drivers/LCDDriver.h"
 #include "drivers/EncoderDriver.h"
 #include "core/SequenceEngine.h"
-#include "esp_log.h"
+#include "core/NetworkManager.h"
 #include <cstdio>
 #include <cmath>
 
@@ -384,7 +384,7 @@ void InputManager::handleMenuEncoder() {
             xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
           } else {
             LCD_setMessage("Error: Task Failed");
-            ESP_LOGE("MENU", "Failed to create autonomous_task");
+            PEACH_LOGE("MENU", "Failed to create autonomous_task");
           }
         } else {
           LCD_setMessage("Missing Limits");
@@ -396,7 +396,7 @@ void InputManager::handleMenuEncoder() {
           xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
         } else {
           LCD_setMessage("Error: Task Failed");
-          ESP_LOGE("MENU", "Failed to create shutdown task");
+          PEACH_LOGE("MENU", "Failed to create shutdown task");
         }
       } else {
         // Enter sub-menu for Arm/Act/Z

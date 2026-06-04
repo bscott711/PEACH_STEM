@@ -1,7 +1,7 @@
 #include "tasks/MotorNode.h"
 #include "drivers/LCDDriver.h"
 #include "controller.h"
-#include <esp_log.h>
+#include "core/NetworkManager.h"
 #include <cmath>
 
 static const char* TAG = "MOTOR_NODE";
@@ -21,7 +21,9 @@ MotorNode::MotorNode()
     , homingState(H_IDLE)
     , homingStartTime(0)
     , armStepPos(0)
-    , armCalStart(-1) {
+    , armCalStart(-1)
+    , trackingTarget(0.0f)
+    , isTrackingTarget(false) {
     limits[0] = 0.0f; limits[1] = 0.0f; limits[2] = 0.0f;
     limitSet[0] = false; limitSet[1] = false; limitSet[2] = false;
 }
@@ -47,7 +49,7 @@ void MotorNode::hwInit() {
     StorageManager::loadMotorLimits(limits, limitSet);
     StorageManager::loadMotorState(isHomed, currentPosition);
     
-    ESP_LOGI(TAG, "Loaded limits: Bot=%.2f(%s), Mid=%.2f(%s), Top=%.2f(%s)",
+    PEACH_LOGI(TAG, "Loaded limits: Bot=%.2f(%s), Mid=%.2f(%s), Top=%.2f(%s)",
              limits[0], limitSet[0] ? "Y" : "N",
              limits[1], limitSet[1] ? "Y" : "N",
              limits[2], limitSet[2] ? "Y" : "N");
@@ -55,16 +57,29 @@ void MotorNode::hwInit() {
 
 void MotorNode::processCommand(const MotorCommand& cmd) {
     switch (cmd.action) {
+        case MotorCmdAction::SET_TARGET:
+            trackingTarget = cmd.value;
+            // Determine direction based on current position
+            if (trackingTarget > currentPosition) {
+                targetSpeed = cmd.targetSpeed;
+            } else {
+                targetSpeed = -cmd.targetSpeed;
+            }
+            isTrackingTarget = true;
+            PEACH_LOGI(TAG, "GOTO target: %.2f at speed %d", trackingTarget, cmd.targetSpeed);
+            break;
+            
         case MotorCmdAction::SET_SPEED:
             targetSpeed = (int)cmd.value;
-            ESP_LOGD(TAG, "Set speed: %d", targetSpeed);
+            isTrackingTarget = false;
+            PEACH_LOGD(TAG, "Set speed: %d", targetSpeed);
             break;
             
         case MotorCmdAction::START_HOMING:
             if (homingState == H_IDLE && !motorLocked) {
                 homingState = H_MOVING_TOP;
                 isHoming = true;
-                ESP_LOGI(TAG, "Homing sequence initiated");
+                PEACH_LOGI(TAG, "Homing sequence initiated");
             }
             break;
             
@@ -72,14 +87,14 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
             limits[0] = cmd.value;
             limitSet[0] = true;
             StorageManager::saveMotorLimit(StorageManager::LIMIT_BOT, limits[0], true);
-            ESP_LOGI(TAG, "Bottom limit set to %.2f", limits[0]);
+            PEACH_LOGI(TAG, "Bottom limit set to %.2f", limits[0]);
             break;
             
         case MotorCmdAction::SET_LIMIT_MID:
             limits[1] = cmd.value;
             limitSet[1] = true;
             StorageManager::saveMotorLimit(StorageManager::LIMIT_MID, limits[1], true);
-            ESP_LOGI(TAG, "Middle limit set to %.2f", limits[1]);
+            PEACH_LOGI(TAG, "Middle limit set to %.2f", limits[1]);
             break;
             
         case MotorCmdAction::SET_LIMIT_TOP:
@@ -87,25 +102,25 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
             limits[2] = 0.0f;
             limitSet[2] = true;
             StorageManager::saveMotorLimit(StorageManager::LIMIT_TOP, limits[2], true);
-            ESP_LOGI(TAG, "Top limit set to 0 and position zeroed");
+            PEACH_LOGI(TAG, "Top limit set to 0 and position zeroed");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_BOT:
             limitSet[0] = false;
             StorageManager::saveMotorLimit(StorageManager::LIMIT_BOT, limits[0], false);
-            ESP_LOGI(TAG, "Bottom limit cleared");
+            PEACH_LOGI(TAG, "Bottom limit cleared");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_MID:
             limitSet[1] = false;
             StorageManager::saveMotorLimit(StorageManager::LIMIT_MID, limits[1], false);
-            ESP_LOGI(TAG, "Middle limit cleared");
+            PEACH_LOGI(TAG, "Middle limit cleared");
             break;
             
         case MotorCmdAction::CLEAR_LIMIT_TOP:
             limitSet[2] = false;
             StorageManager::saveMotorLimit(StorageManager::LIMIT_TOP, limits[2], false);
-            ESP_LOGI(TAG, "Top limit cleared");
+            PEACH_LOGI(TAG, "Top limit cleared");
             break;
             
         case MotorCmdAction::GET_STATE:
@@ -128,7 +143,7 @@ void MotorNode::hwUpdate() {
     if (motorLocked && targetSpeed == 0) {
         motorLocked = false;
         LCD_setMessage("MOTOR UNLOCKED");
-        ESP_LOGI(TAG, "Motor unlocked");
+        PEACH_LOGI(TAG, "Motor unlocked");
     }
 
 #if ENABLE_OPTICAL_ENDSTOPS
@@ -152,7 +167,7 @@ void MotorNode::hwUpdate() {
             case H_BACKOFF:
                 if (topEndstopTriggered) {
                     driver.setVelocity(0);
-                    ESP_LOGI(TAG, "Homing complete (Top triggered)!");
+                    PEACH_LOGI(TAG, "Homing complete (Top triggered)!");
                     
                     currentPosition = 0.0f; // Top is 0 or Max Limit depending on configuration.
                     // Assuming Top is 0 for clearance.
@@ -163,7 +178,7 @@ void MotorNode::hwUpdate() {
                     
                     StorageManager::saveMotorState(true, 0.0f);
                 } else if (xTaskGetTickCount() - homingStartTime > pdMS_TO_TICKS(15000)) {
-                    ESP_LOGE(TAG, "Homing timeout");
+                    PEACH_LOGE(TAG, "Homing timeout");
                     LCD_setMessage("Homing: TIMEOUT");
                     driver.setVelocity(0);
                     isHoming = false;
@@ -220,7 +235,45 @@ void MotorNode::hwUpdate() {
                 // Block ALL downward movement if swung out and Mid isn't set
                 targetSpeed = 0;
                 LCD_setMessage("Arm Out: Mid Not Set");
-                ESP_LOGW(TAG, "Blocked downward motion: arm out, mid limit not set");
+                PEACH_LOGW(TAG, "Blocked downward motion: arm out, mid limit not set");
+            }
+        }
+        
+        // Interlock Option B: Don't allow swing in if Z is below Buffer
+        if (targetSpeed > 0 && !swungOut) {
+            // Nothing to interlock going UP, let it move
+        }
+
+        // Tracking Target logic (Overrides limits if tracking)
+        if (isTrackingTarget) {
+            if (targetSpeed < 0) { // Moving DOWN
+                float dist = currentPosition - trackingTarget;
+                if (dist <= 0.0f) {
+                    targetSpeed = 0;
+                    isTrackingTarget = false;
+                    LCD_setMessage("Target Reached");
+                } else if (dist < 5.0f) {
+                    // Decel
+                    int minSpeed = 1000;
+                    int maxSpeed = std::abs(targetSpeed);
+                    if (maxSpeed > minSpeed) {
+                        targetSpeed = -(minSpeed + (int)((maxSpeed - minSpeed) * (dist / 5.0f)));
+                    }
+                }
+            } else if (targetSpeed > 0) { // Moving UP
+                float dist = trackingTarget - currentPosition;
+                if (dist <= 0.0f) {
+                    targetSpeed = 0;
+                    isTrackingTarget = false;
+                    LCD_setMessage("Target Reached");
+                } else if (dist < 5.0f) {
+                    // Decel
+                    int minSpeed = 1000;
+                    int maxSpeed = std::abs(targetSpeed);
+                    if (maxSpeed > minSpeed) {
+                        targetSpeed = (minSpeed + (int)((maxSpeed - minSpeed) * (dist / 5.0f)));
+                    }
+                }
             }
         }
         
@@ -341,6 +394,14 @@ bool MotorNode::setLimitTop(float position) {
     MotorCommand cmd;
     cmd.action = MotorCmdAction::SET_LIMIT_TOP;
     cmd.value = position;
+    return sendCommand(cmd);
+}
+
+bool MotorNode::setTarget(float position, int speed) {
+    MotorCommand cmd;
+    cmd.action = MotorCmdAction::SET_TARGET;
+    cmd.value = position;
+    cmd.targetSpeed = speed;
     return sendCommand(cmd);
 }
 

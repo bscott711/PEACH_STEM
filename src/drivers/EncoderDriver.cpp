@@ -1,7 +1,7 @@
 #include "drivers/EncoderDriver.h"
 #include "controller.h" // Gives access to encoderStateMutex
 #include <Adafruit_seesaw.h>
-#include <esp_log.h>
+#include "core/NetworkManager.h" // Replaces esp_log.h for custom PEACH_LOG
 
 static Adafruit_seesaw ss(&Wire);
 
@@ -16,7 +16,7 @@ const TickType_t DEBOUNCE_DELAY_MS = 50;
 
 void init_encoder() {
   if (!ss.begin(ENCODER_I2C_ADDR)) {
-    ESP_LOGE("ENCODER", "Failed to detect I2C encoder at 0x%02X",
+    PEACH_LOGE("ENCODER", "Failed to detect I2C encoder at 0x%02X",
              ENCODER_I2C_ADDR);
     vTaskDelay(pdMS_TO_TICKS(2000));
     while (true) {
@@ -78,13 +78,13 @@ void EncoderDriver_Service() {
 
           if (duration >= 2500) {
             setDoublePressed = true;
-            ESP_LOGI("ENCODER", "Button %d VERY LONG pressed (clearing pos)", i);
+            PEACH_LOGI("ENCODER", "Button %d VERY LONG pressed (clearing pos)", i);
           } else if (duration >= 800) {
             setLongPressed = true;
-            ESP_LOGI("ENCODER", "Button %d LONG pressed", i);
+            PEACH_LOGI("ENCODER", "Button %d LONG pressed", i);
           } else {
             setPressed = true;
-            ESP_LOGI("ENCODER", "Button %d pressed", i);
+            PEACH_LOGI("ENCODER", "Button %d pressed", i);
           }
         }
       }
@@ -113,7 +113,7 @@ void EncoderDriver_Service() {
           // Rate limit the serial output so I2C doesn't get starved
           static TickType_t lastLogTime[4] = {0};
           if ((now - lastLogTime[i]) >= pdMS_TO_TICKS(250)) {
-            ESP_LOGI("ENCODER", "Enc %d: %ld", i,
+            PEACH_LOGI("ENCODER", "Enc %d: %ld", i,
                      (long)g_encoderState.position[i]);
             lastLogTime[i] = now;
           }
