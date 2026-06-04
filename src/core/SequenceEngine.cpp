@@ -85,14 +85,21 @@ void autonomous_task(void *pvParameters) {
         bool goingUp = (targetZ > currentPos);
         int velocity = 0;
         
-        // Only command movement if we aren't already there (prevents instant speed spikes)
-        if (abs(targetZ - currentPos) > 0.1f) {
-            velocity = goingUp ? AUTO_SEQUENCE_SPEED : -AUTO_SEQUENCE_SPEED;
+        // Only command movement if we aren't already there (prevents instant speed spikes and locking)
+        bool posReached = false;
+        if (abs(targetZ - currentPos) <= 0.1f) {
+            posReached = true;
+        } else {
+            int goSpeed = 5000;
+            if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                goSpeed = systemState.zGoSpeed;
+                xSemaphoreGive(systemStateMutex);
+            }
+            velocity = goingUp ? goSpeed : -goSpeed;
             g_motorNode.setSpeed(velocity);
         }
 
         // Wait until position is reached or E-STOP
-        bool posReached = false;
         while (!posReached) {
           ev = xEventGroupGetBits(controlEvents);
           if (ev & BIT_ESTOP_REQUEST) {
@@ -124,7 +131,12 @@ void autonomous_task(void *pvParameters) {
             if (abs(armTel.currentPosition - targetAbs) < 10.0f) {
               stepComplete = true; // Reached target steps
             } else {
-              g_armNode.setTarget(step.target); // Sends 0-100%
+              int goSpeed = 5000;
+              if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                  goSpeed = systemState.armGoSpeed;
+                  xSemaphoreGive(systemStateMutex);
+              }
+              g_armNode.setTarget(step.target, goSpeed); // Sends 0-100% with speed
               vTaskDelay(pdMS_TO_TICKS(50));
             }
           } else {
@@ -141,7 +153,14 @@ void autonomous_task(void *pvParameters) {
           targetPct = actTel.limits[step.target];
         }
         
-        g_actuatorNode.setTarget(targetPct, step.actuatorSpeed);
+        int speed = step.actuatorSpeed;
+        if (speed == 255) { // Use configured speed if max speed is requested
+            if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                speed = systemState.actGoSpeed;
+                xSemaphoreGive(systemStateMutex);
+            }
+        }
+        g_actuatorNode.setTarget(targetPct, speed);
         
         // Wait until actuator reaches the target percentage
         bool posReached = false;

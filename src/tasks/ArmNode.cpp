@@ -105,16 +105,27 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
 void ArmNode::hwUpdate() {
     if (isTrackingTarget) {
         float error = targetTrackingAbsSteps - currentPosition;
-        float stepsPerSec = (float)targetTrackingSpeed * 0.715f;
-        float expectedDeltaPos = stepsPerSec * ((float)TASK_UPDATE_INTERVAL_MS / 1000.0f);
+        float Kp = 5.0f; // Proportional gain for deceleration ease-out
+        float desiredSpeedFloat = error * Kp;
+        int desiredSpeed = (int)constrain(desiredSpeedFloat, -targetTrackingSpeed, targetTrackingSpeed);
         
-        // Constant velocity tracking with exact clamping to prevent oscillation
-        if (abs(error) <= expectedDeltaPos * 1.5f + 1.0f) {
+        // Slew-rate limiter for acceleration ease-in (1 second to reach full speed)
+        int maxAccelPerTick = targetTrackingSpeed / 100;
+        if (maxAccelPerTick < 10) maxAccelPerTick = 10;
+        
+        if (desiredSpeed > targetSpeed + maxAccelPerTick) {
+            targetSpeed += maxAccelPerTick;
+        } else if (desiredSpeed < targetSpeed - maxAccelPerTick) {
+            targetSpeed -= maxAccelPerTick;
+        } else {
+            targetSpeed = desiredSpeed;
+        }
+        
+        // Stop condition when firmly at target
+        if (abs(error) < 2.0f && abs(targetSpeed) <= 10) {
             currentPosition = targetTrackingAbsSteps;
             targetSpeed = 0;
             isTrackingTarget = false;
-        } else {
-            targetSpeed = (error > 0) ? targetTrackingSpeed : -targetTrackingSpeed;
         }
     }
 

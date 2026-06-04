@@ -436,12 +436,12 @@ void InputManager::handleMenuEncoder() {
           int stepSize = (systemState.zJogSpeed <= 100 && delta < 0) || (systemState.zJogSpeed < 100 && delta > 0) ? 10 : 100;
           systemState.zJogSpeed += delta * stepSize;
           if (systemState.zJogSpeed < 10) systemState.zJogSpeed = 10;
-          if (systemState.zJogSpeed > 5000) systemState.zJogSpeed = 5000;
+          if (systemState.zJogSpeed > 8500) systemState.zJogSpeed = 8500;
         } else if (item == S4_POS_GO_SPD) {
           int stepSize = (systemState.zGoSpeed <= 100 && delta < 0) || (systemState.zGoSpeed < 100 && delta > 0) ? 10 : 100;
           systemState.zGoSpeed += delta * stepSize;
           if (systemState.zGoSpeed < 10) systemState.zGoSpeed = 10;
-          if (systemState.zGoSpeed > 5000) systemState.zGoSpeed = 5000;
+          if (systemState.zGoSpeed > 8500) systemState.zGoSpeed = 8500;
         }
       }
     } else {
