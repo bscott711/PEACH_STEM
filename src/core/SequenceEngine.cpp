@@ -47,11 +47,12 @@ void autonomous_task(void *pvParameters) {
 
   // Define the shutdown sequence
   const SequenceStep sequence_shutdown[] = {
-      {SEQ_MOVE_ARM_AND_Z, 0, 2, 0, "Auto: Shutdown"}
+      {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z"},
+      {SEQ_MOVE_ARM, 0, 0, 0, "Auto: Arm Clear"}
   };
 
   const SequenceStep* sequence = (seqType == 1) ? sequence_shutdown : sequence_normal;
-  const int numSteps = (seqType == 1) ? 1 : (sizeof(sequence_normal) / sizeof(sequence_normal[0]));
+  const int numSteps = (seqType == 1) ? 2 : (sizeof(sequence_normal) / sizeof(sequence_normal[0]));
   bool aborted = false;
 
   LCD_setMessage("Auto: Running");

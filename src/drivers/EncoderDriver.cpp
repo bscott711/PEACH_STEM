@@ -28,7 +28,12 @@ void init_encoder() {
   for (int i = 0; i < 4; i++) {
     ss.pinMode(SEESAW_BUTTON_PINS[i], INPUT_PULLUP);
     mask |= (1UL << SEESAW_BUTTON_PINS[i]);
+  }
+  
+  // Wait for pullups to overcome bus capacitance
+  vTaskDelay(pdMS_TO_TICKS(10));
 
+  for (int i = 0; i < 4; i++) {
     bool state = ss.digitalRead(SEESAW_BUTTON_PINS[i]);
     lastBtnLevel[i] = state;
   }
@@ -41,6 +46,7 @@ void init_encoder() {
     g_encoderState.buttonPressed[i] = false;
     g_encoderState.buttonDoublePressed[i] = false;
     g_encoderState.buttonLongPressed[i] = false;
+    btnPressTime[i] = xTaskGetTickCount();
   }
 }
 
