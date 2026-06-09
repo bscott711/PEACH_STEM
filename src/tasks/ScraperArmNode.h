@@ -2,7 +2,7 @@
 #include "core/StorageManager.h"
 #include "drivers/MotorDriver.h"
 #include "messaging.h"
-#include "ActiveMotionNode.h"
+#include "tasks/ActiveMotionNode.h"
 
 /**
  * @brief Arm Stepper motor control node using Active Object pattern.

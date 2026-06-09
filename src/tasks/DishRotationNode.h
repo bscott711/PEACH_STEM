@@ -1,5 +1,5 @@
 #pragma once
-#include "ActiveMotionNode.h"
+#include "tasks/ActiveMotionNode.h"
 #include "core/StorageManager.h"
 #include "messaging.h"
 
