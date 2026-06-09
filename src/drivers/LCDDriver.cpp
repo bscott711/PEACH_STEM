@@ -204,14 +204,14 @@ static void drawTree(int progress, float offsetX) {
 static void draw_splashScreen() {
   u8g2.clearBuffer();
 
-  drawTree(100, 32.0f);
+  draw_peachLogo();
 
   // === Text (right of peach) ===
   u8g2.setFont(u8g2_font_helvB14_tr);
   u8g2.drawStr(50, 30, "PEACH");
 
   u8g2.setFont(u8g2_font_helvB18_tr);
-  u8g2.drawStr(55, 54, "STEM");
+  u8g2.drawStr(50, 54, "STEM");
 
   // Small version tag
   u8g2.setFont(u8g2_font_tiny5_tf);
@@ -223,7 +223,7 @@ static void draw_splashScreen() {
 void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool failed) {
   u8g2.clearBuffer();
 
-  drawTree(100, 32.0f);
+  draw_peachLogo();
 
   // WiFi Connection text on the right
   u8g2.setFont(u8g2_font_helvB08_tr);
@@ -259,11 +259,11 @@ void draw_otaScreen() {
   int otaProgress = NetworkManager::getOTAProgress();
   const char* otaStatus = NetworkManager::getOTAStatus();
 
-  drawTree(otaProgress, 64.0f);
+  draw_peachLogo();
 
   // UI Overlay - Top Left
   u8g2.setFont(u8g2_font_tiny5_tf);
-  u8g2.drawStr(0, 10, "PEACH PIT UPDATING");
+  u8g2.drawStr(0, 10, "PEACH STEM UPDATING");
 
   u8g2.sendBuffer();
 }

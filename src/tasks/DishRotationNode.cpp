@@ -10,7 +10,7 @@ DishRotationNode::DishRotationNode() : StepperAxisNode({
     "ROTATION_NODE",
     &Serial1,
     TMC2209::SERIAL_ADDRESS_2,
-    -1, -1, -1,
+    -1, -1, -1, SG_DIAG1,
     false, // NO limits (continuous rotation)
     savePos, loadPos, nullptr, nullptr, nullptr,
     StorageManager::loadDishRotationSGThreshold(100), // initial SG
@@ -20,7 +20,8 @@ DishRotationNode::DishRotationNode() : StepperAxisNode({
 DishRotationNode::~DishRotationNode() {}
 
 bool DishRotationNode::checkInterlock(int desiredSpeed) {
-    // "Dish rotation is blocked if the Lift is not in its home position"
+    // TEMPORARILY DISABLED: "Dish rotation is blocked if the Lift is not in its home position"
+    /*
     if (desiredSpeed != 0) {
         AxisTelemetry liftTel;
         if (dishLiftTelQueue != NULL && xQueuePeek(dishLiftTelQueue, &liftTel, 0) == pdPASS) {
@@ -40,5 +41,6 @@ bool DishRotationNode::checkInterlock(int desiredSpeed) {
             return true;
         }
     }
+    */
     return false;
 }

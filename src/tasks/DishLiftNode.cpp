@@ -20,8 +20,8 @@ DishLiftNode::DishLiftNode() : StepperAxisNode({
     "LIFT_NODE",
     &Serial1,
     TMC2209::SERIAL_ADDRESS_0,
-    -1, -1, -1,
-    true, // has limits
+    -1, -1, -1, SG_DIAG3,
+    false, // Temporarily disabled limits per user request
     savePos, loadPos, saveHome, saveTilt, loadLim,
     StorageManager::loadDishLiftSGThreshold(100), // initial SG
     Z_VEL_MULT // Lift velocity multiplier
@@ -30,8 +30,9 @@ DishLiftNode::DishLiftNode() : StepperAxisNode({
 DishLiftNode::~DishLiftNode() {}
 
 bool DishLiftNode::checkInterlock(int desiredSpeed) {
-    // "The dishLift node should not be able to Lift if the dish is rotating or if the scraper arm is not in clear position"
+    // TEMPORARILY DISABLED: "The dishLift node should not be able to Lift if the dish is rotating or if the scraper arm is not in clear position"
     // Lifting means desiredSpeed > 0 (moving towards Tilt/LimitB)
+    /*
     if (desiredSpeed > 0) {
         // Check rotation
         AxisTelemetry rotTel;
@@ -68,5 +69,6 @@ bool DishLiftNode::checkInterlock(int desiredSpeed) {
             return true;
         }
     }
+    */
     return false;
 }

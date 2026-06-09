@@ -435,7 +435,7 @@ void InputManager::handleMenuEncoder() {
           int stepSize = (spd <= 100 && delta < 0) || (spd < 100 && delta > 0) ? 10 : 100;
           spd += delta * stepSize;
           if (spd < 10) spd = 10;
-          if (spd > 8500) spd = 8500;
+          if (spd > 5000) spd = 5000;
         } else if (item == S4_LIFT_NUM_MIX) {
           systemState.dishLiftNumMix += delta;
           if (systemState.dishLiftNumMix < 1) systemState.dishLiftNumMix = 1;

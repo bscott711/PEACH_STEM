@@ -20,8 +20,8 @@ ScraperArmNode::ScraperArmNode() : StepperAxisNode({
     "ARM_NODE",
     &Serial1,
     TMC2209::SERIAL_ADDRESS_1,
-    -1, -1, -1,
-    true, // has limits
+    -1, -1, -1, SG_DIAG2,
+    false, // Temporarily disabled limits per user request
     savePos, loadPos, saveClear, saveScrape, loadLim,
     StorageManager::loadScraperArmSGThreshold(100), // initial SG Threshold
     ROT_VEL_MULT // Arm velocity multiplier
@@ -30,9 +30,10 @@ ScraperArmNode::ScraperArmNode() : StepperAxisNode({
 ScraperArmNode::~ScraperArmNode() {}
 
 bool ScraperArmNode::checkInterlock(int desiredSpeed) {
-    // "Scraper arm is blocked from moving down only if the DishLift is not in it's Home position"
+    // TEMPORARILY DISABLED: "Scraper arm is blocked from moving down only if the DishLift is not in it's Home position"
     // Moving down means moving towards Scrape (LimitB). In our config, LimitA is Clear (approx 0), LimitB is Scrape (positive).
     // So moving down is desiredSpeed > 0
+    /*
     if (desiredSpeed > 0) {
         AxisTelemetry liftTel;
         if (dishLiftTelQueue != NULL && xQueuePeek(dishLiftTelQueue, &liftTel, 0) == pdPASS) {
@@ -53,5 +54,6 @@ bool ScraperArmNode::checkInterlock(int desiredSpeed) {
             return true;
         }
     }
+    */
     return false;
 }

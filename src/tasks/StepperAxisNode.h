@@ -13,6 +13,7 @@ struct StepperAxisConfig {
     int rxPin;
     int txPin;
     int enPin;
+    int diagPin;
 
     // Optional limits. If false, acts as continuous rotation.
     bool hasLimits;

@@ -16,6 +16,10 @@ void StepperAxisNode::hwInit() {
     vTaskDelay(pdMS_TO_TICKS(200));
     driver.begin(*(config.serialPort), config.serialAddress);
 
+    if (config.diagPin >= 0) {
+        pinMode(config.diagPin, INPUT);
+    }
+
     // Initialize state
     isHomed = false;
     currentPosition = 0.0f;
@@ -121,8 +125,15 @@ void StepperAxisNode::hwUpdate() {
 
     // 4. SG Homing logic
     if (isHoming) {
-        uint16_t sgResult = driver.getStallGuardResult();
-        if (sgResult == 0 && std::abs(targetSpeed) > 100) {
+        bool stall = false;
+        if (config.diagPin >= 0) {
+            stall = (digitalRead(config.diagPin) == HIGH);
+        } else {
+            uint16_t sgResult = driver.getStallGuardResult();
+            stall = (sgResult == 0);
+        }
+
+        if (stall && std::abs(targetSpeed) > 100) {
             targetSpeed = 0;
             currentPosition = 0.0f; // Zero out on stall
             isHomed = true;
@@ -202,15 +213,24 @@ void StepperAxisNode::hwUpdate() {
     }
 
     // 6. SG Crash Detection (only if not homing)
+    /*
     if (!isHoming && targetSpeed != 0) {
-        uint16_t sgResult = driver.getStallGuardResult();
-        if (sgResult == 0 && std::abs(targetSpeed) > 100) {
+        bool stall = false;
+        if (config.diagPin >= 0) {
+            stall = (digitalRead(config.diagPin) == HIGH);
+        } else {
+            uint16_t sgResult = driver.getStallGuardResult();
+            stall = (sgResult == 0);
+        }
+
+        if (stall && std::abs(targetSpeed) > 100) {
             ESP_LOGW(config.axisName, "Stall detected!");
             targetSpeed = 0;
             isTrackingTarget = false;
             LCD_setMessage("STALL!");
         }
     }
+    */
 
     // 7. Update Position
     if (targetSpeed != 0) {

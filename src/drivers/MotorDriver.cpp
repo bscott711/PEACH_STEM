@@ -10,7 +10,7 @@ void motorDriver::begin(HardwareSerial &serial,
   driver.disableCoolStep();
   driver.enableStealthChop();
   driver.setMicrostepsPerStep(16);
-  driver.setCoolStepDurationThreshold(0);
+  driver.setCoolStepDurationThreshold(0xFFFFF); // Enable StallGuard across speeds
 
     driver.enable();
 
