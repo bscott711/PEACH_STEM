@@ -8,32 +8,32 @@ An ESP32-based embedded control system for automated laboratory cell handling wi
 
 PEACH_STEM is a multi-axis robotic control system designed for pick-and-drop operations in laboratory environments. Built on the ESP32 platform with FreeRTOS, it provides deterministic real-time control of 3 stepper motors.
 
-**Current Branch Status**: v1.0 - Fully refactored to an Active Object architecture with lock-free queues, dynamic NVS limit mapping for autonomous sequences, and adjustable UI speeds.
+**Current Branch Status**: v1.0 - Fully refactored to a DRY Active Object architecture with lock-free generic axis queues, dynamic NVS limit mapping for autonomous sequences, cross-axis safety interlocks, and adjustable UI speeds.
 
 ## Features
 
-- **Multi-task FreeRTOS Architecture**: Concurrent task management for motor control, encoder reading, and LCD display.
+- **Multi-task FreeRTOS Architecture**: Concurrent task management for motor control, encoder reading, and OLED display.
 - **Dynamic Sequence Engine**: Interruptible step-based autonomous operation with E-STOP support and dynamic NVS limit lookups.
-- **Precision Motion Control**:
-  - **Stepper 0**: Rotates the dish.
-  - **Stepper 1**: Lowers and raises the scraper arm.
-  - **Stepper 2**: Raises and lowers the petri dish.
-  - All axes use TMC2209 stepper motor drivers. Stall Guard support will be added.
+- **Precision Motion Control (`StepperAxisNode`)**:
+  - **Stepper 0 (Lift Node)**: Raises and lowers the petri dish.
+  - **Stepper 1 (Arm Node)**: Lowers and raises the scraper arm.
+  - **Stepper 2 (Rotation Node)**: Rotates the dish.
+  - All axes use TMC2209 stepper motor drivers with dynamic StallGuard support and procedural GOTO tracking.
 - **Real-time Feedback**: Adafruit Seesaw I2C Quadrature encoder integration for closed-loop position control and UI manipulation.
 - **User Interface**: SPI OLED LCD display (U8g2) for status monitoring, limit setting, and speed adjustments.
-- **Safety Features**:
+- **Safety Interlocks**:
+  - Cross-axis telemetry reads block collisions (e.g., preventing lift movement if the scraper arm is not clear).
   - Emergency stop (E-STOP) with immediate sequence interruption.
-  - Hardware optical endstop overrides.
 - **State Persistence**: Non-volatile storage (NVS) for physical limits and custom sequence speeds (Jog/Go for all axes).
 
 ## Hardware Requirements
 
 - **Microcontroller**: ESP32 DevKit
 - **Motor Drivers**:
-  - 3x TMC2209 stepper motor drivers (UART configurable, Stall Guard ready)
+  - 3x TMC2209 stepper motor drivers (UART configurable, StallGuard ready)
 - **Display**: SPI OLED LCD
 - **Encoder**: Adafruit I2C Quadrature rotary encoder (4 encoders)
-- **Sensors**: Optical Endstops
+- **Sensors**: Motor StallGuard for limit homing.
 
 ## Installation
 
@@ -51,20 +51,20 @@ git clone https://gitlab.com/ericjohnson0987/robotic-cell-dropper.git
 cd robotic-cell-dropper
 ```
 
-1. Install PlatformIO dependencies:
+2. Install PlatformIO dependencies:
 
 ```bash
 pio install
 ```
 
-1. Configure upload port in `platformio.ini` if necessary
-2. Build and upload:
+3. Configure upload port in `platformio.ini` if necessary
+4. Build and upload:
 
 ```bash
 pio run --target upload
 ```
 
-1. Open serial monitor:
+5. Open serial monitor:
 
 ```bash
 pio device monitor
@@ -76,7 +76,7 @@ pio device monitor
 PEACH_STEM/
 ├── src/
 │   ├── main.cpp              # Entry point and FreeRTOS task initialization
-│   ├── messaging.h           # System-wide structs and lock-free queue definitions
+│   ├── messaging.h           # Unified `AxisCommand` structs and lock-free queue definitions
 │   ├── HardwareConfig.h      # Centralized pinout and hardware definitions
 │   ├── core/                 # Core system managers
 │   │   ├── InputManager.*    # UI and encoder interaction logic
@@ -85,7 +85,10 @@ PEACH_STEM/
 │   │   └── SystemState.h     # Global UI state enum and sequence definitions
 │   ├── tasks/                # FreeRTOS task implementations (Active Objects)
 │   │   ├── ActiveMotionNode.h # Base template for all motion nodes
-│   │   └── MotorNode.*       # Stepper motor control loops
+│   │   ├── StepperAxisNode.*  # Generic DRY base class handling tracking & limits
+│   │   ├── DishLiftNode.*     # Lift specific interlocks
+│   │   ├── ScraperArmNode.*   # Arm specific interlocks
+│   │   └── DishRotationNode.* # Rotation specific interlocks
 │   └── drivers/              # Hardware abstraction layer
 │       ├── EncoderDriver.*   # Quadrature encoder interface
 │       └── LCDDriver.*       # OLED display driver
@@ -102,39 +105,21 @@ PEACH_STEM/
 
 The UI is driven by an encoder with short-press, long-press, and double-press actions:
 
-- **Level 0 (Main Menu)**: Select between Shutdown, Stepper 0, Stepper 1, Stepper 2, and Auto.
-- **Level 1 (Sub-Menu)**: Set limits (Top/Mid/Bot), adjust Jog/Go speeds, or clear calibration.
+- **Level 0 (Main Menu)**: Select between Shutdown, Stepper 0 (Arm), Stepper 1 (Rot), Stepper 2 (Z), and Auto.
+- **Level 1 (Sub-Menu)**: Set limits (Clear/Scrape/Home/Tilt), adjust Jog/Go speeds, tune StallGuard, or clear calibration.
 
 ### Sequence Engine
 
-The autonomous sequence engine uses a step-based approach defined in `SystemState.h`:
+The autonomous sequence engine orchestrates lock-free messages to the axis nodes. It implements standard sequences such as:
+1.  **Auto**: Lowers the arm, rotates the dish, raises the arm, and iteratively mixes (lifts/lowers) the dish.
+2.  **Shutdown**: Lowers the dish (Home) and raises the arm (Clear).
 
-```cpp
-enum SequenceAction {
-  SEQ_MOVE_ROTATE,    // Move Stepper 0 (Rotate) to target limit index
-  SEQ_MOVE_SCRAPE,    // Move Stepper 1 (Scrape) to target limit index
-  SEQ_MOVE_TILT,      // Move Stepper 2 (Tilt) to target limit index
-  SEQ_WAIT_MS,        // Interruptible delay
-  SEQ_WAIT_USER,      // Wait for user button press
-  SEQ_MOVE_ALL        // Move multiple steppers simultaneously
-};
-```
-
-Each sequence step can be interrupted by E-STOP events, ensuring safe operation.
+Each sequence step checks for E-STOP events, ensuring immediate hardware shutdown on user intervention.
 
 ## Configuration
 
 Hardware pins and global constants are located in `src/HardwareConfig.h`.
-Speeds and limits are dynamically configurable at runtime via the UI and persisted to NVS.
-
-## Task Priorities
-
-FreeRTOS task priorities (higher number = higher priority):
-
-- **EncoderTask** (3): Critical for position feedback
-- **Controller** (3): Main UI and input control logic
-- **MotorNodes** (2): Stepper 0, 1, and 2 control loops
-- **LCD** (2): Display refresh
+Speeds, Limits, and StallGuard thresholds are dynamically configurable at runtime via the UI and automatically persisted to NVS.
 
 ## License
 
@@ -162,12 +147,11 @@ SOFTWARE.
 
 ## Project Status
 
-**Active Development** - Current focus on refining the autonomous sequence engine and UI reliability.
+**Active Development** - Current focus on refining the autonomous sequence engine, StallGuard thresholds, and UI reliability.
 
-### Recent Changes (v3.0)
+### Recent Changes (v1.0 Refactor)
 
-- **Architecture Refactor**: Replaced shared-memory `controller` blob with `ActiveMotionNode` architecture. Tasks communicate exclusively via lock-free FreeRTOS queues (`messaging.h`).
-- **Data-Driven Subsystems**: Extracted `StorageManager`, `InputManager`, and `SequenceEngine`.
-- **Dynamic UI Speeds**: Jog and GOTO speeds for all axes are now configurable via the physical Encoder UI and saved to NVS.
-- **Dynamic Limits**: `SequenceEngine` now dynamically looks up calibrated physical positions for the steppers at runtime, eliminating hardcoded depths.
-- **Hardware Abstraction**: Centralized pin definitions to `HardwareConfig.h`.
+- **DRY Architecture Refactor**: Introduced `StepperAxisNode`, abstracting hundreds of lines of duplicate proportional-tracking, homing, StallGuard, and soft endstop logic.
+- **Cross-Axis Interlocks**: Nodes actively peek at sibling telemetry queues to prevent mechanical collisions (e.g. blocking arm movement if the lift isn't cleared).
+- **Unified Messaging**: All motion nodes now use a generic `AxisCommand` and `AxisTelemetry` schema (`messaging.h`), drastically simplifying system integration.
+- **Dynamic UI Tuning**: StallGuard thresholds and precise Go/Jog speeds are directly tuneable in the physical UI and saved dynamically to NVS.
