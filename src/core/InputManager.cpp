@@ -69,10 +69,17 @@ void InputManager::populateUIData(UIData& data) {
         
         data.scraperArmJogSpeed = systemState.scraperArmJogSpeed;
         data.scraperArmGoSpeed = systemState.scraperArmGoSpeed;
+        data.scraperArmSGThreshold = systemState.scraperArmSGThreshold;
+
         data.dishRotationJogSpeed = systemState.dishRotationJogSpeed;
         data.dishRotationGoSpeed = systemState.dishRotationGoSpeed;
+        data.dishRotationNumRotations = systemState.dishRotationNumRotations;
+        data.dishRotationSGThreshold = systemState.dishRotationSGThreshold;
+
         data.dishLiftJogSpeed = systemState.dishLiftJogSpeed;
         data.dishLiftGoSpeed = systemState.dishLiftGoSpeed;
+        data.dishLiftNumMix = systemState.dishLiftNumMix;
+        data.dishLiftSGThreshold = systemState.dishLiftSGThreshold;
         xSemaphoreGive(systemStateMutex);
     }
     
@@ -88,29 +95,24 @@ void InputManager::populateUIData(UIData& data) {
     ScraperArmTelemetry armTel;
     if (xQueuePeek(scraperArmTelQueue, &armTel, 0) == pdPASS) {
         data.scraperArmPosition = armTel.currentPosition;
-        data.scraperArmPosOut = armTel.posOut;
-        data.scraperArmPosBuffer = armTel.posBuffer;
-        data.scraperArmPosIn = armTel.posIn;
+        data.scraperArmPosClear = armTel.posClear;
+        data.scraperArmPosScrape = armTel.posScrape;
     }
 
     // Actuator telemetry
     DishRotationTelemetry actTel;
     if (xQueuePeek(dishRotationTelQueue, &actTel, 0) == pdPASS) {
-        data.dishRotationPercent = (int)actTel.currentPercent;
-        for(int i=0; i<3; i++) {
-            data.dishRotationLimits[i] = actTel.limits[i];
-            data.dishRotationLimitSet[i] = actTel.limitSet[i];
-        }
+        data.dishRotationPos = actTel.currentPosition;
     }
 
     // Motor telemetry
     DishLiftTelemetry motTel;
     if (xQueuePeek(dishLiftTelQueue, &motTel, 0) == pdPASS) {
         data.dishLiftPos = motTel.currentPosition;
-        for(int i=0; i<3; i++) {
-            data.dishLiftLimits[i] = motTel.limits[i];
-            data.dishLiftLimitSet[i] = motTel.limitSet[i];
-        }
+        data.dishLiftPosHome = motTel.posHome;
+        data.dishLiftPosTilt = motTel.posTilt;
+        data.dishLiftPosHomeSet = motTel.posHomeSet;
+        data.dishLiftPosTiltSet = motTel.posTiltSet;
     }
 }
 
@@ -183,26 +185,19 @@ void InputManager::handleActuatorEncoder() {
     xSemaphoreGive(encoderStateMutex);
   }
 
-  // Read current actuator position for stop-in-place
-  DishRotationTelemetry actTel;
-  int currentPct = 50; // fallback
-  if (xQueuePeek(dishRotationTelQueue, &actTel, 0) == pdPASS) {
-    currentPct = (int)actTel.currentPercent;
-  }
-
   // Encoder turn: jog actuator
   if (delta != 0) {
-    int speed = 128;
+    int speed = 5000;
     if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
       speed = systemState.dishRotationJogSpeed;
       xSemaphoreGive(systemStateMutex);
     }
     if (delta > 0) {
       g_jogDirActuator = 1;
-      g_dishRotationNode.setTarget(100, speed); // Extend toward 100%
+      g_dishRotationNode.setSpeed(speed);
     } else {
       g_jogDirActuator = -1;
-      g_dishRotationNode.setTarget(0, speed); // Retract toward 0%
+      g_dishRotationNode.setSpeed(-speed);
     }
   }
 
@@ -210,8 +205,8 @@ void InputManager::handleActuatorEncoder() {
   if (btnPressed) {
     LCD_notifyButtonPress(1);
     g_jogDirActuator = 0;
-    g_dishRotationNode.setTarget(currentPct, 255);
-    LCD_setMessage("Act: Stopped");
+    g_dishRotationNode.setSpeed(0);
+    LCD_setMessage("Rot: Stopped");
   }
 }
 
@@ -273,15 +268,6 @@ void InputManager::handleMotorEncoder() {
 // S4: Unified Hierarchical Menu
 // ============================================================================
 
-// Helper: get the number of items in the current sub-menu
-static int getSubMenuCount(S4Level0 menu) {
-  switch (menu) {
-    case S4_SCRAPER: return S4_SCRAPER_COUNT;
-    case S4_ROTATION: return S4_POS_COUNT;
-    case S4_LIFT:   return S4_POS_COUNT;
-    default:     return 0;
-  }
-}
 
 void InputManager::handleMenuEncoder() {
   bool shortPress = false;
@@ -311,44 +297,40 @@ void InputManager::handleMenuEncoder() {
 
   // --- Read telemetry for position operations ---
   ScraperArmTelemetry armTel;
-  int scraperArmPosOut = -1;
-  int scraperArmPosBuffer = -1;
-  int scraperArmPosIn = -1;
+  int scraperArmPosClear = -1;
+  int scraperArmPosScrape = -1;
   float armCurrentPos = 0;
   if (scraperArmTelQueue != NULL && xQueuePeek(scraperArmTelQueue, &armTel, 0) == pdPASS) {
-    scraperArmPosOut = armTel.posOut;
-    scraperArmPosBuffer = armTel.posBuffer;
-    scraperArmPosIn = armTel.posIn;
+    scraperArmPosClear = armTel.posClear;
+    scraperArmPosScrape = armTel.posScrape;
     armCurrentPos = armTel.currentPosition;
   }
 
   DishRotationTelemetry actTel;
-  int actLimits[3] = {0};
-  bool actLimitSet[3] = {false};
+  float actCurrentPos = 0;
   if (xQueuePeek(dishRotationTelQueue, &actTel, 0) == pdPASS) {
-    for (int i = 0; i < 3; i++) {
-      actLimits[i] = actTel.limits[i];
-      actLimitSet[i] = actTel.limitSet[i];
-    }
+    actCurrentPos = actTel.currentPosition;
   }
 
   DishLiftTelemetry motorTel;
-  float dishLiftLimits[3] = {0};
-  bool dishLiftLimitSet[3] = {false};
+  float motorPosHome = 0;
+  float motorPosTilt = 0;
+  bool motorPosHomeSet = false;
+  bool motorPosTiltSet = false;
   float motorCurrentPos = 0;
   if (xQueuePeek(dishLiftTelQueue, &motorTel, 0) == pdPASS) {
     motorCurrentPos = motorTel.currentPosition;
-    for (int i = 0; i < 3; i++) {
-      dishLiftLimits[i] = motorTel.limits[i];
-      dishLiftLimitSet[i] = motorTel.limitSet[i];
-    }
+    motorPosHome = motorTel.posHome;
+    motorPosTilt = motorTel.posTilt;
+    motorPosHomeSet = motorTel.posHomeSet;
+    motorPosTiltSet = motorTel.posTiltSet;
   }
 
   // Check if auto is running — block menu actions
   EventBits_t events = xEventGroupGetBits(controlEvents);
   bool autoRunning = (events & BIT_AUTO_RUNNING) != 0;
 
-  // ===========================
+// ===========================
   // LEVEL 0: Axis selection
   // ===========================
   if (!systemState.s4InSubMenu) {
@@ -373,9 +355,8 @@ void InputManager::handleMenuEncoder() {
 
       if (systemState.s4Menu == S4_AUTO) {
         // Launch autonomous sequence (check prerequisites)
-        bool canRun = dishLiftLimitSet[0] && dishLiftLimitSet[1] && dishLiftLimitSet[2] &&
-                      actLimitSet[0] && actLimitSet[1] && actLimitSet[2] &&
-                      (scraperArmPosOut != -1) && (scraperArmPosIn != -1);
+        bool canRun = motorPosHomeSet && motorPosTiltSet &&
+                      (scraperArmPosClear != -1) && (scraperArmPosScrape != -1);
         
         if (canRun) {
           TaskHandle_t autoTaskHandle = NULL;
@@ -410,47 +391,58 @@ void InputManager::handleMenuEncoder() {
   // ===========================
   // LEVEL 1: Position sub-menu
   // ===========================
-  int itemCount = getSubMenuCount(systemState.s4Menu);
+  int itemCount = 0;
+  if (systemState.s4Menu == S4_SCRAPER) itemCount = S4_SCRAPER_COUNT;
+  else if (systemState.s4Menu == S4_ROTATION) itemCount = S4_ROT_COUNT;
+  else if (systemState.s4Menu == S4_LIFT) itemCount = S4_LIFT_COUNT;
 
   S4Level0 axis = systemState.s4Menu;
   int item = systemState.s4SubMenu;
 
-  // Encoder turn: adjust speed OR cycle through sub-menu items
+  // Encoder turn: adjust speed/setting OR cycle through sub-menu items
   if (delta != 0) {
     if (systemState.s4InSpeedEdit) {
       if (axis == S4_SCRAPER) {
-        if (item == S4_SCRAPER_JOG_SPD) {
-          int stepSize = (systemState.scraperArmJogSpeed <= 100 && delta < 0) || (systemState.scraperArmJogSpeed < 100 && delta > 0) ? 10 : 100;
-          systemState.scraperArmJogSpeed += delta * stepSize;
-          if (systemState.scraperArmJogSpeed < 10) systemState.scraperArmJogSpeed = 10;
-          if (systemState.scraperArmJogSpeed > 5000) systemState.scraperArmJogSpeed = 5000;
-        } else if (item == S4_SCRAPER_GO_SPD) {
-          int stepSize = (systemState.scraperArmGoSpeed <= 100 && delta < 0) || (systemState.scraperArmGoSpeed < 100 && delta > 0) ? 10 : 100;
-          systemState.scraperArmGoSpeed += delta * stepSize;
-          if (systemState.scraperArmGoSpeed < 10) systemState.scraperArmGoSpeed = 10;
-          if (systemState.scraperArmGoSpeed > 5000) systemState.scraperArmGoSpeed = 5000;
+        if (item == S4_SCRAPER_JOG_SPD || item == S4_SCRAPER_GO_SPD) {
+          int& spd = (item == S4_SCRAPER_JOG_SPD) ? systemState.scraperArmJogSpeed : systemState.scraperArmGoSpeed;
+          int stepSize = (spd <= 100 && delta < 0) || (spd < 100 && delta > 0) ? 10 : 100;
+          spd += delta * stepSize;
+          if (spd < 10) spd = 10;
+          if (spd > 5000) spd = 5000;
+        } else if (item == S4_SCRAPER_SG_TUNE) {
+          systemState.scraperArmSGThreshold += delta * 5;
+          if (systemState.scraperArmSGThreshold < 0) systemState.scraperArmSGThreshold = 0;
+          if (systemState.scraperArmSGThreshold > 255) systemState.scraperArmSGThreshold = 255;
         }
       } else if (axis == S4_ROTATION) {
-        if (item == S4_POS_JOG_SPD) {
-          systemState.dishRotationJogSpeed += delta * 10;
-          if (systemState.dishRotationJogSpeed < 10) systemState.dishRotationJogSpeed = 10;
-          if (systemState.dishRotationJogSpeed > 255) systemState.dishRotationJogSpeed = 255;
-        } else if (item == S4_POS_GO_SPD) {
-          systemState.dishRotationGoSpeed += delta * 10;
-          if (systemState.dishRotationGoSpeed < 10) systemState.dishRotationGoSpeed = 10;
-          if (systemState.dishRotationGoSpeed > 255) systemState.dishRotationGoSpeed = 255;
+        if (item == S4_ROT_JOG_SPD || item == S4_ROT_GO_SPD) {
+          int& spd = (item == S4_ROT_JOG_SPD) ? systemState.dishRotationJogSpeed : systemState.dishRotationGoSpeed;
+          int stepSize = (spd <= 100 && delta < 0) || (spd < 100 && delta > 0) ? 10 : 100;
+          spd += delta * stepSize;
+          if (spd < 10) spd = 10;
+          if (spd > 5000) spd = 5000;
+        } else if (item == S4_ROT_NUM_ROTATIONS) {
+          systemState.dishRotationNumRotations += delta;
+          if (systemState.dishRotationNumRotations < 1) systemState.dishRotationNumRotations = 1;
+        } else if (item == S4_ROT_SG_TUNE) {
+          systemState.dishRotationSGThreshold += delta * 5;
+          if (systemState.dishRotationSGThreshold < 0) systemState.dishRotationSGThreshold = 0;
+          if (systemState.dishRotationSGThreshold > 255) systemState.dishRotationSGThreshold = 255;
         }
       } else if (axis == S4_LIFT) {
-        if (item == S4_POS_JOG_SPD) {
-          int stepSize = (systemState.dishLiftJogSpeed <= 100 && delta < 0) || (systemState.dishLiftJogSpeed < 100 && delta > 0) ? 10 : 100;
-          systemState.dishLiftJogSpeed += delta * stepSize;
-          if (systemState.dishLiftJogSpeed < 10) systemState.dishLiftJogSpeed = 10;
-          if (systemState.dishLiftJogSpeed > 8500) systemState.dishLiftJogSpeed = 8500;
-        } else if (item == S4_POS_GO_SPD) {
-          int stepSize = (systemState.dishLiftGoSpeed <= 100 && delta < 0) || (systemState.dishLiftGoSpeed < 100 && delta > 0) ? 10 : 100;
-          systemState.dishLiftGoSpeed += delta * stepSize;
-          if (systemState.dishLiftGoSpeed < 10) systemState.dishLiftGoSpeed = 10;
-          if (systemState.dishLiftGoSpeed > 8500) systemState.dishLiftGoSpeed = 8500;
+        if (item == S4_LIFT_JOG_SPD || item == S4_LIFT_GO_SPD) {
+          int& spd = (item == S4_LIFT_JOG_SPD) ? systemState.dishLiftJogSpeed : systemState.dishLiftGoSpeed;
+          int stepSize = (spd <= 100 && delta < 0) || (spd < 100 && delta > 0) ? 10 : 100;
+          spd += delta * stepSize;
+          if (spd < 10) spd = 10;
+          if (spd > 8500) spd = 8500;
+        } else if (item == S4_LIFT_NUM_MIX) {
+          systemState.dishLiftNumMix += delta;
+          if (systemState.dishLiftNumMix < 1) systemState.dishLiftNumMix = 1;
+        } else if (item == S4_LIFT_SG_TUNE) {
+          systemState.dishLiftSGThreshold += delta * 5;
+          if (systemState.dishLiftSGThreshold < 0) systemState.dishLiftSGThreshold = 0;
+          if (systemState.dishLiftSGThreshold > 255) systemState.dishLiftSGThreshold = 255;
         }
       }
     } else {
@@ -465,9 +457,10 @@ void InputManager::handleMenuEncoder() {
   // --- Check for "Back" item ---
   bool isBack = false;
   if (axis == S4_SCRAPER && item == S4_SCRAPER_BACK) isBack = true;
-  if ((axis == S4_ROTATION || axis == S4_LIFT) && item == S4_POS_BACK) isBack = true;
+  if (axis == S4_ROTATION && item == S4_ROT_BACK) isBack = true;
+  if (axis == S4_LIFT && item == S4_LIFT_BACK) isBack = true;
 
-  // ---- Short Press: GOTO or Back ----
+  // ---- Short Press: GOTO, Edit Settings, or Back ----
   if (shortPress) {
     LCD_notifyButtonPress(3);
 
@@ -482,26 +475,32 @@ void InputManager::handleMenuEncoder() {
       return;
     }
 
-    // Check if we are interacting with a Speed menu item
-    bool isSpeedItem = false;
-    if (axis == S4_SCRAPER && (item == S4_SCRAPER_JOG_SPD || item == S4_SCRAPER_GO_SPD)) isSpeedItem = true;
-    if ((axis == S4_ROTATION || axis == S4_LIFT) && (item == S4_POS_JOG_SPD || item == S4_POS_GO_SPD)) isSpeedItem = true;
+    // Check if we are interacting with an Edit setting item
+    bool isSettingItem = false;
+    if (axis == S4_SCRAPER && (item == S4_SCRAPER_JOG_SPD || item == S4_SCRAPER_GO_SPD || item == S4_SCRAPER_SG_TUNE)) isSettingItem = true;
+    if (axis == S4_ROTATION && (item == S4_ROT_JOG_SPD || item == S4_ROT_GO_SPD || item == S4_ROT_NUM_ROTATIONS || item == S4_ROT_SG_TUNE)) isSettingItem = true;
+    if (axis == S4_LIFT && (item == S4_LIFT_JOG_SPD || item == S4_LIFT_GO_SPD || item == S4_LIFT_NUM_MIX || item == S4_LIFT_SG_TUNE)) isSettingItem = true;
 
-    if (isSpeedItem) {
+    if (isSettingItem) {
       if (systemState.s4InSpeedEdit) {
         // Exit edit mode and save
         systemState.s4InSpeedEdit = false;
         if (axis == S4_SCRAPER) {
-          StorageManager::saveScraperArmJogSpeed(systemState.scraperArmJogSpeed);
-          StorageManager::saveScraperArmGoSpeed(systemState.scraperArmGoSpeed);
+          if (item == S4_SCRAPER_JOG_SPD) StorageManager::saveScraperArmJogSpeed(systemState.scraperArmJogSpeed);
+          else if (item == S4_SCRAPER_GO_SPD) StorageManager::saveScraperArmGoSpeed(systemState.scraperArmGoSpeed);
+          else if (item == S4_SCRAPER_SG_TUNE) StorageManager::saveScraperArmSGThreshold(systemState.scraperArmSGThreshold);
         } else if (axis == S4_ROTATION) {
-          StorageManager::saveDishRotationJogSpeed(systemState.dishRotationJogSpeed);
-          StorageManager::saveDishRotationGoSpeed(systemState.dishRotationGoSpeed);
+          if (item == S4_ROT_JOG_SPD) StorageManager::saveDishRotationJogSpeed(systemState.dishRotationJogSpeed);
+          else if (item == S4_ROT_GO_SPD) StorageManager::saveDishRotationGoSpeed(systemState.dishRotationGoSpeed);
+          else if (item == S4_ROT_NUM_ROTATIONS) StorageManager::saveDishRotationNumRotations(systemState.dishRotationNumRotations);
+          else if (item == S4_ROT_SG_TUNE) StorageManager::saveDishRotationSGThreshold(systemState.dishRotationSGThreshold);
         } else if (axis == S4_LIFT) {
-          StorageManager::saveDishLiftJogSpeed(systemState.dishLiftJogSpeed);
-          StorageManager::saveDishLiftGoSpeed(systemState.dishLiftGoSpeed);
+          if (item == S4_LIFT_JOG_SPD) StorageManager::saveDishLiftJogSpeed(systemState.dishLiftJogSpeed);
+          else if (item == S4_LIFT_GO_SPD) StorageManager::saveDishLiftGoSpeed(systemState.dishLiftGoSpeed);
+          else if (item == S4_LIFT_NUM_MIX) StorageManager::saveDishLiftNumMix(systemState.dishLiftNumMix);
+          else if (item == S4_LIFT_SG_TUNE) StorageManager::saveDishLiftSGThreshold(systemState.dishLiftSGThreshold);
         }
-        LCD_setMessage("Speed Saved");
+        LCD_setMessage("Saved");
       } else {
         // Enter edit mode
         systemState.s4InSpeedEdit = true;
@@ -511,47 +510,26 @@ void InputManager::handleMenuEncoder() {
 
     // GOTO action based on axis and item
     if (axis == S4_SCRAPER) {
-      if (scraperArmPosOut == -1 || scraperArmPosIn == -1) {
+      if (scraperArmPosClear == -1 || scraperArmPosScrape == -1) {
         LCD_setMessage("Arm: Not Cal'd");
         return;
       }
-      if (item == S4_SCRAPER_TIP) {
-        g_scraperArmNode.setTarget(100.0f, systemState.scraperArmGoSpeed);
-        LCD_setMessage("Arm: Go Tip");
-      } else if (item == S4_SCRAPER_BUFFER) {
-        if (scraperArmPosBuffer == -1) {
-          LCD_setMessage("Arm: Buf Not Set");
-          return;
-        }
-        float percent = 100.0f * (float)(scraperArmPosBuffer - scraperArmPosOut) / (float)(scraperArmPosIn - scraperArmPosOut);
-        g_scraperArmNode.setTarget(percent, systemState.scraperArmGoSpeed);
-        LCD_setMessage("Arm: Go Buffer");
-      } else if (item == S4_SCRAPER_CLEAR) {
-        g_scraperArmNode.setTarget(0.0f, systemState.scraperArmGoSpeed);
+      if (item == S4_SCRAPER_CLEAR) {
+        g_scraperArmNode.setTarget(0.0f, systemState.scraperArmGoSpeed); // 0%
         LCD_setMessage("Arm: Go Clear");
+      } else if (item == S4_SCRAPER_SCRAPE) {
+        g_scraperArmNode.setTarget(100.0f, systemState.scraperArmGoSpeed); // 100%
+        LCD_setMessage("Arm: Go Scrape");
       }
-    } else if (axis == S4_ROTATION) {
-      int limitIdx = (item == S4_POS_TOP) ? 2 : ((item == S4_POS_BOT) ? 0 : 1);
-      if (!actLimitSet[limitIdx]) {
-        LCD_setMessage("Act: Not Set");
-        return;
-      }
-      g_dishRotationNode.setTarget(actLimits[limitIdx], systemState.dishRotationGoSpeed);
-      LCD_setMessage("Act: GOTO");
     } else if (axis == S4_LIFT) {
-      int limitIdx = (item == S4_POS_TOP) ? 2 : ((item == S4_POS_BOT) ? 0 : 1);
-      if (!dishLiftLimitSet[limitIdx]) {
-        LCD_setMessage("Z: Not Set");
-        return;
-      }
-
-      TaskHandle_t gotoTaskHandle = NULL;
-      if (xTaskCreate(motor_goto_task, "GotoTask", 4096,
-                      (void*)(intptr_t)limitIdx, 2,
-                      &gotoTaskHandle) == pdPASS) {
-        xEventGroupSetBits(controlEvents, BIT_AUTO_RUNNING);
-      } else {
-        LCD_setMessage("Error: Task Failed");
+      if (item == S4_LIFT_HOME) {
+        if (!motorPosHomeSet) { LCD_setMessage("Z: Home Not Set"); return; }
+        g_dishLiftNode.setTarget(motorPosHome, systemState.dishLiftGoSpeed);
+        LCD_setMessage("Z: Go Home");
+      } else if (item == S4_LIFT_TILT) {
+        if (!motorPosTiltSet) { LCD_setMessage("Z: Tilt Not Set"); return; }
+        g_dishLiftNode.setTarget(motorPosTilt, systemState.dishLiftGoSpeed);
+        LCD_setMessage("Z: Go Tilt");
       }
     }
   }
@@ -559,56 +537,32 @@ void InputManager::handleMenuEncoder() {
   // ---- Long Press: SET current position ----
   if (longPress && !isBack && systemState.s4InSubMenu) {
     if (axis == S4_SCRAPER) {
-      if (item == S4_SCRAPER_TIP) {
-        g_scraperArmNode.setPosIn();
-        LCD_setMessage("Arm: Tip Set");
-        printf("Arm Tip (posIn) set at current position\n");
-      } else if (item == S4_SCRAPER_BUFFER) {
-        g_scraperArmNode.setPosBuffer();
-        LCD_setMessage("Arm: Buffer Set");
-        printf("Arm Buffer (posBuffer) set at current position\n");
-      } else if (item == S4_SCRAPER_CLEAR) {
-        g_scraperArmNode.setPosOut();
+      if (item == S4_SCRAPER_CLEAR) {
+        g_scraperArmNode.setPosClear();
         LCD_setMessage("Arm: Clear Set");
-        printf("Arm Clear (posOut) set at current position\n");
+      } else if (item == S4_SCRAPER_SCRAPE) {
+        g_scraperArmNode.setPosScrape();
+        LCD_setMessage("Arm: Scrape Set");
       }
-    } else if (axis == S4_ROTATION) {
-      int pct = (int)actTel.currentPercent;
-      if (item == S4_POS_TOP) g_dishRotationNode.setLimitTop(pct);
-      else if (item == S4_POS_MID) g_dishRotationNode.setLimitMid(pct);
-      else if (item == S4_POS_BOT) g_dishRotationNode.setLimitBot(pct);
-      LCD_setMessage("Act: Position Set");
-      printf("Actuator limit %d set to %d%%\n", item, pct);
     } else if (axis == S4_LIFT) {
-      if (item == S4_POS_TOP) {
-          g_dishLiftNode.setLimitTop(motorCurrentPos);
+      if (item == S4_LIFT_HOME) {
+        g_dishLiftNode.setPosHome(motorCurrentPos);
+        LCD_setMessage("Z: Home Set");
+      } else if (item == S4_LIFT_TILT) {
+        g_dishLiftNode.setPosTilt(motorCurrentPos);
+        LCD_setMessage("Z: Tilt Set");
       }
-      else if (item == S4_POS_MID) g_dishLiftNode.setLimitMid(motorCurrentPos);
-      else if (item == S4_POS_BOT) g_dishLiftNode.setLimitBot(motorCurrentPos);
-      LCD_setMessage("Z: Position Set");
-      printf("Motor limit %d set to %.2f\n", item, motorCurrentPos);
     }
   }
 
-  // ---- Double Press: CLEAR position ----
+  // ---- Double Press: CLEAR position/calibration ----
   if (doublePress && !isBack && systemState.s4InSubMenu) {
     if (axis == S4_SCRAPER) {
-      // Clear both arm calibration points
       g_scraperArmNode.clearCal();
       LCD_setMessage("Arm: Cal Cleared");
-      printf("Arm calibration cleared\n");
-    } else if (axis == S4_ROTATION) {
-      if (item == S4_POS_TOP) g_dishRotationNode.clearLimitTop();
-      else if (item == S4_POS_MID) g_dishRotationNode.clearLimitMid();
-      else if (item == S4_POS_BOT) g_dishRotationNode.clearLimitBot();
-      LCD_setMessage("Act: Cleared");
-      printf("Actuator limit %d cleared\n", item);
     } else if (axis == S4_LIFT) {
-      if (item == S4_POS_TOP) g_dishLiftNode.clearLimitTop();
-      else if (item == S4_POS_MID) g_dishLiftNode.clearLimitMid();
-      else if (item == S4_POS_BOT) g_dishLiftNode.clearLimitBot();
-      LCD_setMessage("Z: Cleared");
-      printf("Motor limit %d cleared\n", item);
+      g_dishLiftNode.clearCal();
+      LCD_setMessage("Z: Cal Cleared");
     }
   }
 }

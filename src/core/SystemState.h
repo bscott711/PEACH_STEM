@@ -16,40 +16,47 @@ enum S4Level0 {
 };
 
 // Sub-menu indices for Arm
-#define S4_SCRAPER_TIP 0
-#define S4_SCRAPER_BUFFER 1
-#define S4_SCRAPER_CLEAR 2
-#define S4_SCRAPER_JOG_SPD 3
-#define S4_SCRAPER_GO_SPD 4
+#define S4_SCRAPER_CLEAR 0
+#define S4_SCRAPER_SCRAPE 1
+#define S4_SCRAPER_JOG_SPD 2
+#define S4_SCRAPER_GO_SPD 3
+#define S4_SCRAPER_SG_TUNE 4
 #define S4_SCRAPER_BACK 5
 #define S4_SCRAPER_COUNT 6
 
-// Sub-menu indices for Actuator & Z (same layout)
-#define S4_POS_TOP 0
-#define S4_POS_MID 1
-#define S4_POS_BOT 2
-#define S4_POS_JOG_SPD 3
-#define S4_POS_GO_SPD 4
-#define S4_POS_BACK 5
-#define S4_POS_COUNT 6
+// Sub-menu indices for Rotation
+#define S4_ROT_JOG_SPD 0
+#define S4_ROT_GO_SPD 1
+#define S4_ROT_NUM_ROTATIONS 2
+#define S4_ROT_SG_TUNE 3
+#define S4_ROT_BACK 4
+#define S4_ROT_COUNT 5
+
+// Sub-menu indices for Lift
+#define S4_LIFT_HOME 0
+#define S4_LIFT_TILT 1
+#define S4_LIFT_JOG_SPD 2
+#define S4_LIFT_GO_SPD 3
+#define S4_LIFT_NUM_MIX 4
+#define S4_LIFT_SG_TUNE 5
+#define S4_LIFT_BACK 6
+#define S4_LIFT_COUNT 7
 
 // --- Sequence Engine Types ---
 enum SequenceAction {
-  SEQ_MOVE_LIFT,         // Move Z-axis to target position (deterministic)
+  SEQ_MOVE_LIFT,         // Move Z-axis to target limit
   SEQ_MOVE_SCRAPER,      // Move Arm
-  SEQ_MOVE_ROTATION,     // Set actuator to target percent
+  SEQ_MOVE_ROTATION,     // Spin rotation motor
   SEQ_WAIT_MS,           // Interruptible delay (target = milliseconds)
   SEQ_WAIT_USER,         // Wait for user button press to continue
-  SEQ_MOVE_SCRAPER_AND_Z // Move Arm to target percent and Z to limitIdx
-                         // simultaneously
+  SEQ_MOVE_SCRAPER_AND_Z // Move Arm and Z simultaneously
 };
 
 struct SequenceStep {
   SequenceAction action;
   int target;        // Position/percent/ms/limitIndex depending on action
-  int limitIdx;      // Z-position limit index (0=Bot, 1=Mid, 2=Top) (only for
-                     // SEQ_MOVE_LIFT)
-  int actuatorSpeed; // Actuator PWM speed (0-255) (only for SEQ_MOVE_ROTATION)
+  int limitIdx;      // Z-position limit index (only for SEQ_MOVE_LIFT)
+  int actuatorSpeed; // Motor speed
   const char *message; // LCD message (NULL = no update)
 };
 
@@ -63,13 +70,20 @@ struct SystemState {
   bool s4InSubMenu;
   bool s4InSpeedEdit;
 
-  // Configurable Speeds
+  // Configurable Speeds and SG
   int scraperArmJogSpeed;
   int scraperArmGoSpeed;
-  int dishRotationJogSpeed; // PWM 0-255
-  int dishRotationGoSpeed;  // PWM 0-255
+  int scraperArmSGThreshold;
+  
+  int dishRotationJogSpeed;
+  int dishRotationGoSpeed;
+  int dishRotationNumRotations;
+  int dishRotationSGThreshold;
+  
   int dishLiftJogSpeed;
   int dishLiftGoSpeed;
+  int dishLiftNumMix;
+  int dishLiftSGThreshold;
 
   // Collision Detection (shared flag)
   bool collisionDetected;

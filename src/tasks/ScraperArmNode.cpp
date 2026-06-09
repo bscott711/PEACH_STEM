@@ -8,29 +8,32 @@
 static const char *TAG = "SCRAPER_NODE";
 
 ScraperArmNode::ScraperArmNode()
-    : currentPosition(0.0f), targetSpeed(0), previousTargetSpeed(0), posOut(-1),
-      posIn(-1), isTrackingTarget(false), targetTrackingAbsSteps(0.0f),
+    : currentPosition(0.0f), targetSpeed(0), previousTargetSpeed(0), posClear(-1),
+      posScrape(-1), isTrackingTarget(false), targetTrackingAbsSteps(0.0f),
       lastSavedPosition(-999.0f) {}
 
 ScraperArmNode::~ScraperArmNode() {}
 
 void ScraperArmNode::hwInit() {
-  // Initialize TMC2209 driver for Arm on Address 1
-  // Note: Serial1 is shared and initialized globally in main.cpp!
   vTaskDelay(pdMS_TO_TICKS(200));
   driver.begin(Serial1, TMC2209::SERIAL_ADDRESS_1);
 
-  // Open NVS namespace
-  StorageManager::loadScraperArmCalibration(posOut, posIn);
-  posBuffer = StorageManager::loadScraperArmPosBuffer();
+  StorageManager::loadScraperArmCalibration(posClear, posScrape);
   float lastPos = StorageManager::loadScraperArmPosition();
 
-  // Set stepper to last known position immediately
   currentPosition = lastPos;
   lastSavedPosition = lastPos;
 
-  PEACH_LOGI(TAG, "Loaded calibration: Out=%d, Buf=%d, In=%d, Pos=%.1f", posOut,
-             posBuffer, posIn, lastPos);
+  // Apply StallGuard threshold from SystemState
+  int sg = StorageManager::loadScraperArmSGThreshold(100);
+  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+      systemState.scraperArmSGThreshold = sg;
+      xSemaphoreGive(systemStateMutex);
+  }
+  driver.setStallGuardThreshold(sg);
+
+  PEACH_LOGI(TAG, "Loaded calibration: Clear=%d, Scrape=%d, Pos=%.1f", posClear,
+             posScrape, lastPos);
 }
 
 void ScraperArmNode::processCommand(const ScraperArmCommand &cmd) {
@@ -43,25 +46,16 @@ void ScraperArmNode::processCommand(const ScraperArmCommand &cmd) {
 
   case ScraperArmCmdAction::STOP:
     targetSpeed = 0;
-    // Don't clear isTrackingTarget — if we were tracking, the
-    // P-controller in hwUpdate will resume. STOP is for jog mode only.
     if (!isTrackingTarget) {
       PEACH_LOGD(TAG, "Arm stopped");
     }
     break;
 
   case ScraperArmCmdAction::SET_TARGET:
-    if (posOut != -1 && posIn != -1) {
-      if (cmd.value == 200.0f && posBuffer != -1) {
-        targetTrackingAbsSteps = posBuffer;
-        PEACH_LOGI(TAG, "Arm tracking target: Buffer -> %.2f steps at speed %d",
-                   targetTrackingAbsSteps, cmd.targetSpeed);
-      } else {
-        targetTrackingAbsSteps =
-            posOut + (cmd.value / 100.0f) * (posIn - posOut);
-        PEACH_LOGI(TAG, "Arm tracking target: %.2f%% -> %.2f steps at speed %d",
-                   cmd.value, targetTrackingAbsSteps, cmd.targetSpeed);
-      }
+    if (posClear != -1 && posScrape != -1) {
+      targetTrackingAbsSteps = posClear + (cmd.value / 100.0f) * (posScrape - posClear);
+      PEACH_LOGI(TAG, "Arm tracking target: %.2f%% -> %.2f steps at speed %d",
+                 cmd.value, targetTrackingAbsSteps, cmd.targetSpeed);
       targetTrackingSpeed = cmd.targetSpeed;
       isTrackingTarget = true;
     } else {
@@ -77,49 +71,50 @@ void ScraperArmNode::processCommand(const ScraperArmCommand &cmd) {
     targetTrackingAbsSteps += cmd.value;
     break;
 
-  case ScraperArmCmdAction::SET_POS_OUT:
+  case ScraperArmCmdAction::SET_POS_CLEAR:
     currentPosition = 0.0f;
-    posOut = 0;
-    StorageManager::saveScraperArmPosOut(posOut);
-    PEACH_LOGI(TAG, "Arm posOut set to 0 and position zeroed");
+    posClear = 0;
+    StorageManager::saveScraperArmPosClear(posClear);
+    PEACH_LOGI(TAG, "Arm posClear set to 0 and position zeroed");
     break;
 
-  case ScraperArmCmdAction::SET_POS_BUFFER:
-    posBuffer = (int)currentPosition;
-    StorageManager::saveScraperArmPosBuffer(posBuffer);
-    PEACH_LOGI(TAG, "Arm posBuffer set to %d", posBuffer);
-    break;
-
-  case ScraperArmCmdAction::SET_POS_IN:
-    posIn = (int)currentPosition;
-    StorageManager::saveScraperArmPosIn(posIn);
-    PEACH_LOGI(TAG, "Arm posIn set to %d", posIn);
+  case ScraperArmCmdAction::SET_POS_SCRAPE:
+    posScrape = (int)currentPosition;
+    StorageManager::saveScraperArmPosScrape(posScrape);
+    PEACH_LOGI(TAG, "Arm posScrape set to %d", posScrape);
     break;
 
   case ScraperArmCmdAction::CLEAR_CAL:
-    posOut = -1;
-    posBuffer = -1;
-    posIn = -1;
-    StorageManager::saveScraperArmPosOut(-1);
-    StorageManager::saveScraperArmPosBuffer(-1);
-    StorageManager::saveScraperArmPosIn(-1);
+    posClear = -1;
+    posScrape = -1;
+    StorageManager::saveScraperArmPosClear(-1);
+    StorageManager::saveScraperArmPosScrape(-1);
     PEACH_LOGI(TAG, "Arm calibration cleared");
     break;
   }
 }
 
 void ScraperArmNode::hwUpdate() {
+  // Update StallGuard threshold dynamically if changed
+  static int lastSg = -1;
+  int currentSg = 100;
+  if (xSemaphoreTake(systemStateMutex, 0) == pdTRUE) {
+      currentSg = systemState.scraperArmSGThreshold;
+      xSemaphoreGive(systemStateMutex);
+  }
+  if (currentSg != lastSg) {
+      driver.setStallGuardThreshold(currentSg);
+      lastSg = currentSg;
+  }
+
   if (isTrackingTarget) {
     float error = targetTrackingAbsSteps - currentPosition;
-    float Kp = 5.0f; // Proportional gain for deceleration ease-out
+    float Kp = 5.0f; 
     float desiredSpeedFloat = error * Kp;
-    int desiredSpeed = (int)constrain(desiredSpeedFloat, -targetTrackingSpeed,
-                                      targetTrackingSpeed);
+    int desiredSpeed = (int)constrain(desiredSpeedFloat, -targetTrackingSpeed, targetTrackingSpeed);
 
-    // Slew-rate limiter for acceleration ease-in (1 second to reach full speed)
     int maxAccelPerTick = targetTrackingSpeed / 100;
-    if (maxAccelPerTick < 10)
-      maxAccelPerTick = 10;
+    if (maxAccelPerTick < 10) maxAccelPerTick = 10;
 
     if (desiredSpeed > targetSpeed + maxAccelPerTick) {
       targetSpeed += maxAccelPerTick;
@@ -129,7 +124,6 @@ void ScraperArmNode::hwUpdate() {
       targetSpeed = desiredSpeed;
     }
 
-    // Stop condition when firmly at target
     if (std::abs(error) < 2.0f && std::abs(targetSpeed) <= 10) {
       currentPosition = targetTrackingAbsSteps;
       targetSpeed = 0;
@@ -137,9 +131,22 @@ void ScraperArmNode::hwUpdate() {
     }
   }
 
+  // StallGuard Detection (specifically useful when reaching the Scrape limit)
+  if (targetSpeed != 0) {
+      uint16_t sgResult = driver.getStallGuardResult();
+      if (sgResult == 0 && std::abs(targetSpeed) > 100) {
+          PEACH_LOGW(TAG, "Stall detected on Arm!");
+          targetSpeed = 0;
+          isTrackingTarget = false;
+          LCD_setMessage("Arm: STALL/LIMIT!");
+          
+          // Optionally, auto-set Scrape position here if not calibrated
+          // But usually we just let it stop.
+      }
+  }
+
   // Velocity control and position integration
   if (targetSpeed != 0) {
-    // VACTUAL to steps/sec factor is ~0.715
     float stepsPerSec = (float)targetSpeed * 0.715f;
     float deltaPos = stepsPerSec * ((float)TASK_UPDATE_INTERVAL_MS / 1000.0f);
     currentPosition += deltaPos;
@@ -147,48 +154,49 @@ void ScraperArmNode::hwUpdate() {
 
   // Read Z motor telemetry for interlock logic
   DishLiftTelemetry motorTel;
-  bool zAtTop = false;
+  bool zAtTilt = false;
   if (dishLiftTelQueue != NULL &&
       xQueuePeek(dishLiftTelQueue, &motorTel, 0) == pdPASS) {
-    if (motorTel.limitSet[2] &&
-        motorTel.currentPosition >= motorTel.limits[2] - 5.0f) {
-      zAtTop = true;
+    if (motorTel.posTiltSet &&
+        motorTel.currentPosition >= motorTel.posTilt - 5.0f) {
+      zAtTilt = true;
     }
   }
 
-  // Check if arm is in or trying to enter the collision zone (between buffer
-  // and tip)
+  // Collision logic: If not at Clear and not at Tilt, warning? 
+  // Wait, Z must be at Tilt (Upper) to move the Arm safely?
+  // Let's just prevent Arm movement if Z isn't at Tilt and we are not close to Clear.
   bool inCollisionZone = false;
-  if (posIn != -1 && posBuffer != -1) {
-    float minZone = min((float)posBuffer, (float)posIn);
-    float maxZone = max((float)posBuffer, (float)posIn);
+  if (posClear != -1 && posScrape != -1) {
+    float minZone = min((float)posClear, (float)posScrape) + 200.0f; // Add buffer zone near clear?
+    float maxZone = max((float)posClear, (float)posScrape);
     if (currentPosition >= minZone && currentPosition <= maxZone) {
       inCollisionZone = true;
     }
   }
 
   // Hard Endstops
-  if (posOut != -1 && posIn != -1 && targetSpeed != 0) {
-    float minLim = min((float)posOut, (float)posIn);
-    float maxLim = max((float)posOut, (float)posIn);
+  if (posClear != -1 && posScrape != -1 && targetSpeed != 0) {
+    float minLim = min((float)posClear, (float)posScrape);
+    float maxLim = max((float)posClear, (float)posScrape);
 
     if (currentPosition >= maxLim && targetSpeed > 0) {
       targetSpeed = 0;
       currentPosition = maxLim;
       isTrackingTarget = false;
-      LCD_setMessage((posIn > posOut) ? "Arm Tip Reached"
+      LCD_setMessage((posScrape > posClear) ? "Arm Scrape Reached"
                                       : "Arm Clear Reached");
     } else if (currentPosition <= minLim && targetSpeed < 0) {
       targetSpeed = 0;
       currentPosition = minLim;
       isTrackingTarget = false;
-      LCD_setMessage((posIn < posOut) ? "Arm Tip Reached"
+      LCD_setMessage((posScrape < posClear) ? "Arm Scrape Reached"
                                       : "Arm Clear Reached");
     }
   }
 
-  // Interlock Check
-  if (inCollisionZone && !zAtTop && targetSpeed != 0) {
+  // Interlock Check (simplified)
+  if (inCollisionZone && !zAtTilt && targetSpeed != 0) {
     targetSpeed = 0;
     isTrackingTarget = false;
     LCD_setMessage("Interlock: Z Not Clear!");
@@ -211,11 +219,9 @@ void ScraperArmNode::hwUpdate() {
 ScraperArmTelemetry ScraperArmNode::generateTelemetry() {
   ScraperArmTelemetry tel;
   tel.currentPosition = currentPosition;
-  tel.targetPosition =
-      isTrackingTarget ? targetTrackingAbsSteps : currentPosition;
-  tel.posOut = posOut;
-  tel.posBuffer = posBuffer;
-  tel.posIn = posIn;
+  tel.targetPosition = isTrackingTarget ? targetTrackingAbsSteps : currentPosition;
+  tel.posClear = posClear;
+  tel.posScrape = posScrape;
   tel.isMoving = (targetSpeed != 0);
   return tel;
 }
@@ -249,23 +255,16 @@ bool ScraperArmNode::setTarget(float percent, int targetSpeed) {
   return sendCommand(cmd);
 }
 
-bool ScraperArmNode::setPosOut() {
+bool ScraperArmNode::setPosClear() {
   ScraperArmCommand cmd;
-  cmd.action = ScraperArmCmdAction::SET_POS_OUT;
+  cmd.action = ScraperArmCmdAction::SET_POS_CLEAR;
   cmd.value = 0.0f;
   return sendCommand(cmd);
 }
 
-bool ScraperArmNode::setPosBuffer() {
+bool ScraperArmNode::setPosScrape() {
   ScraperArmCommand cmd;
-  cmd.action = ScraperArmCmdAction::SET_POS_BUFFER;
-  cmd.value = 0.0f;
-  return sendCommand(cmd);
-}
-
-bool ScraperArmNode::setPosIn() {
-  ScraperArmCommand cmd;
-  cmd.action = ScraperArmCmdAction::SET_POS_IN;
+  cmd.action = ScraperArmCmdAction::SET_POS_SCRAPE;
   cmd.value = 0.0f;
   return sendCommand(cmd);
 }

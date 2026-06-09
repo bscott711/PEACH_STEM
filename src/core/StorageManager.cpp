@@ -13,66 +13,63 @@ void StorageManager::init() {
     }
 }
 
-// --- Actuator ---
-void StorageManager::saveDishRotationLimit(LimitIndex idx, int limit, bool isSet) {
-    static const std::array<const char*, 3> keys = {"actB", "actM", "actT"};
-    static const std::array<const char*, 3> setKeys = {"actS_B", "actS_M", "actS_T"};
-    if (idx >= 0 && idx < 3) {
-        prefs.putInt(keys[idx], limit);
-        prefs.putBool(setKeys[idx], isSet);
-    }
-}
-
-void StorageManager::loadDishRotationLimits(int limits[3], bool limitSet[3]) {
-    limits[0] = prefs.getInt("actB", 0);
-    limits[1] = prefs.getInt("actM", 0);
-    limits[2] = prefs.getInt("actT", 0);
-    limitSet[0] = prefs.getBool("actS_B", false);
-    limitSet[1] = prefs.getBool("actS_M", false);
-    limitSet[2] = prefs.getBool("actS_T", false);
-}
-
+// --- Actuator (Rotation) ---
 void StorageManager::saveDishRotationPosition(float pos) {
-    prefs.putFloat("actPos", pos);
+    prefs.putFloat("rotPos", pos);
 }
 
 float StorageManager::loadDishRotationPosition() {
-    return prefs.getFloat("actPos", 0.0f);
+    return prefs.getFloat("rotPos", 0.0f);
 }
 
 void StorageManager::saveDishRotationJogSpeed(int speed) {
-    prefs.putInt("actJogSpd", speed);
+    prefs.putInt("rotJogSpd", speed);
 }
 
 int StorageManager::loadDishRotationJogSpeed(int defaultSpeed) {
-    return prefs.getInt("actJogSpd", defaultSpeed);
+    return prefs.getInt("rotJogSpd", defaultSpeed);
 }
 
 void StorageManager::saveDishRotationGoSpeed(int speed) {
-    prefs.putInt("actGoSpd", speed);
+    prefs.putInt("rotGoSpd", speed);
 }
 
 int StorageManager::loadDishRotationGoSpeed(int defaultSpeed) {
-    return prefs.getInt("actGoSpd", defaultSpeed);
+    return prefs.getInt("rotGoSpd", defaultSpeed);
 }
 
-// --- Motor ---
-void StorageManager::saveDishLiftLimit(LimitIndex idx, float limit, bool isSet) {
-    static const std::array<const char*, 3> keys = {"limB", "limM", "limT"};
-    static const std::array<const char*, 3> setKeys = {"limS_B", "limS_M", "limS_T"};
-    if (idx >= 0 && idx < 3) {
-        prefs.putFloat(keys[idx], limit);
-        prefs.putBool(setKeys[idx], isSet);
-    }
+void StorageManager::saveDishRotationNumRotations(int num) {
+    prefs.putInt("rotNum", num);
 }
 
-void StorageManager::loadDishLiftLimits(float limits[3], bool limitSet[3]) {
-    limits[0] = prefs.getFloat("limB", 0.0f);
-    limits[1] = prefs.getFloat("limM", 0.0f);
-    limits[2] = prefs.getFloat("limT", 0.0f);
-    limitSet[0] = prefs.getBool("limS_B", false);
-    limitSet[1] = prefs.getBool("limS_M", false);
-    limitSet[2] = prefs.getBool("limS_T", false);
+int StorageManager::loadDishRotationNumRotations(int defaultNum) {
+    return prefs.getInt("rotNum", defaultNum);
+}
+
+void StorageManager::saveDishRotationSGThreshold(int sg) {
+    prefs.putInt("rotSG", sg);
+}
+
+int StorageManager::loadDishRotationSGThreshold(int defaultSg) {
+    return prefs.getInt("rotSG", defaultSg);
+}
+
+// --- Motor (Lift) ---
+void StorageManager::saveDishLiftPosHome(float pos) {
+    prefs.putFloat("limH", pos);
+    prefs.putBool("limS_H", true);
+}
+
+void StorageManager::saveDishLiftPosTilt(float pos) {
+    prefs.putFloat("limT", pos);
+    prefs.putBool("limS_T", true);
+}
+
+void StorageManager::loadDishLiftPositions(float &posHome, float &posTilt, bool &homeSet, bool &tiltSet) {
+    posHome = prefs.getFloat("limH", 0.0f);
+    posTilt = prefs.getFloat("limT", 0.0f);
+    homeSet = prefs.getBool("limS_H", false);
+    tiltSet = prefs.getBool("limS_T", false);
 }
 
 void StorageManager::saveDishLiftState(bool isHomed, float pos) {
@@ -101,26 +98,34 @@ int StorageManager::loadDishLiftGoSpeed(int defaultSpeed) {
     return prefs.getInt("zGoSpd", defaultSpeed);
 }
 
+void StorageManager::saveDishLiftNumMix(int num) {
+    prefs.putInt("zMixNum", num);
+}
+
+int StorageManager::loadDishLiftNumMix(int defaultNum) {
+    return prefs.getInt("zMixNum", defaultNum);
+}
+
+void StorageManager::saveDishLiftSGThreshold(int sg) {
+    prefs.putInt("zSG", sg);
+}
+
+int StorageManager::loadDishLiftSGThreshold(int defaultSg) {
+    return prefs.getInt("zSG", defaultSg);
+}
+
 // --- Arm ---
-void StorageManager::saveScraperArmPosOut(int pos) {
-    prefs.putInt("armPosO", pos);
+void StorageManager::saveScraperArmPosClear(int pos) {
+    prefs.putInt("armPosC", pos);
 }
 
-void StorageManager::saveScraperArmPosIn(int pos) {
-    prefs.putInt("armPosI", pos);
+void StorageManager::saveScraperArmPosScrape(int pos) {
+    prefs.putInt("armPosS", pos);
 }
 
-void StorageManager::saveScraperArmPosBuffer(int pos) {
-    prefs.putInt("armBuf", pos);
-}
-
-int StorageManager::loadScraperArmPosBuffer() {
-    return prefs.getInt("armBuf", -1);
-}
-
-void StorageManager::loadScraperArmCalibration(int &posOut, int &posIn) {
-    posOut = prefs.getInt("armPosO", -1);
-    posIn = prefs.getInt("armPosI", -1);
+void StorageManager::loadScraperArmCalibration(int &posClear, int &posScrape) {
+    posClear = prefs.getInt("armPosC", -1);
+    posScrape = prefs.getInt("armPosS", -1);
 }
 
 void StorageManager::saveScraperArmPosition(float pos) {
@@ -145,4 +150,12 @@ void StorageManager::saveScraperArmGoSpeed(int speed) {
 
 int StorageManager::loadScraperArmGoSpeed(int defaultSpeed) {
     return prefs.getInt("armGoSpd", defaultSpeed);
+}
+
+void StorageManager::saveScraperArmSGThreshold(int sg) {
+    prefs.putInt("armSG", sg);
+}
+
+int StorageManager::loadScraperArmSGThreshold(int defaultSg) {
+    return prefs.getInt("armSG", defaultSg);
 }

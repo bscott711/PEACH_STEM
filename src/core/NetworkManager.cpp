@@ -108,10 +108,10 @@ void NetworkManager::init() {
         xQueueSend(dishLiftCmdQueue, &stopMotor, 0);
       }
       if (dishRotationCmdQueue != NULL) {
-        DishRotationCommand stopAct = { DishRotationCmdAction::SET_TARGET, 0 };
+        DishRotationCommand stopAct = { DishRotationCmdAction::SET_TARGET, 0, 0 };
         DishRotationTelemetry actTel;
         if (dishRotationTelQueue != NULL && xQueuePeek(dishRotationTelQueue, &actTel, 0) == pdPASS) {
-          stopAct.value = actTel.currentPercent;
+          stopAct.value = actTel.currentPosition;
         }
         xQueueSend(dishRotationCmdQueue, &stopAct, 0);
       }

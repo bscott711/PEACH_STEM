@@ -1,230 +1,186 @@
 #include "tasks/DishRotationNode.h"
-
 #include "controller.h"
 #include "core/NetworkManager.h"
+#include "drivers/LCDDriver.h"
 #include <cmath>
+#include <esp_log.h>
 
 static const char *TAG = "ROTATION_NODE";
 
 DishRotationNode::DishRotationNode()
-    : currentPercent(0.0f), targetPercent(0), targetSpeedPWM(255),
-      lastSavedPercent(-1.0f), wasMoving(false) {
-  limits[0] = 0;
-  limits[1] = 0;
-  limits[2] = 0;
-  limitSet[0] = false;
-  limitSet[1] = false;
-  limitSet[2] = false;
-}
+    : currentPosition(0.0f), targetSpeed(0), previousTargetSpeed(0),
+      isTrackingTarget(false), trackingTarget(0.0f),
+      lastSavedPosition(-999.0f) {}
 
 DishRotationNode::~DishRotationNode() {}
 
 void DishRotationNode::hwInit() {
+  vTaskDelay(pdMS_TO_TICKS(200));
+  driver.begin(Serial1, TMC2209::SERIAL_ADDRESS_2);
 
-  // Open NVS namespace for limit and position storage
-  StorageManager::loadDishRotationLimits(limits, limitSet);
   float lastPos = StorageManager::loadDishRotationPosition();
+  currentPosition = lastPos;
+  lastSavedPosition = lastPos;
 
-  currentPercent = lastPos;
-  targetPercent = (int)currentPercent;
-  lastSavedPercent = lastPos;
+  // Apply StallGuard threshold from SystemState
+  int sg = StorageManager::loadDishRotationSGThreshold(100);
+  if (xSemaphoreTake(systemStateMutex, portMAX_DELAY) == pdTRUE) {
+      systemState.dishRotationSGThreshold = sg;
+      xSemaphoreGive(systemStateMutex);
+  }
+  driver.setStallGuardThreshold(sg);
 
-  PEACH_LOGI(TAG, "Loaded limits: Bot=%d(%s), Mid=%d(%s), Top=%d(%s), Pos=%.1f",
-             limits[0], limitSet[0] ? "Y" : "N", limits[1],
-             limitSet[1] ? "Y" : "N", limits[2], limitSet[2] ? "Y" : "N",
-             lastPos);
+  PEACH_LOGI(TAG, "Loaded rotation: Pos=%.1f", lastPos);
 }
 
 void DishRotationNode::processCommand(const DishRotationCommand &cmd) {
   switch (cmd.action) {
-  case DishRotationCmdAction::SET_TARGET:
-    targetPercent = constrain(cmd.value, 0, 100);
-    targetSpeedPWM = constrain(cmd.pwmSpeed, 0, 255);
-    wasMoving = true; // Ensure event triggers even if already at target
-    PEACH_LOGD(TAG, "Set target: %d%%, spd: %d", targetPercent, targetSpeedPWM);
+  case DishRotationCmdAction::SET_SPEED:
+    targetSpeed = (int)cmd.value;
+    isTrackingTarget = false;
+    PEACH_LOGD(TAG, "Rotation set speed: %d", targetSpeed);
     break;
 
-  case DishRotationCmdAction::SET_LIMIT_BOT:
-    limits[0] = cmd.value;
-    limitSet[0] = true;
-    StorageManager::saveDishRotationLimit(StorageManager::LIMIT_BOT, limits[0],
-                                          true);
-    PEACH_LOGI(TAG, "Bottom limit set to %d%%", limits[0]);
-    break;
-
-  case DishRotationCmdAction::SET_LIMIT_MID:
-    limits[1] = cmd.value;
-    limitSet[1] = true;
-    StorageManager::saveDishRotationLimit(StorageManager::LIMIT_MID, limits[1],
-                                          true);
-    PEACH_LOGI(TAG, "Middle limit set to %d%%", limits[1]);
-    break;
-
-  case DishRotationCmdAction::SET_LIMIT_TOP:
-    limits[2] = cmd.value;
-    limitSet[2] = true;
-    StorageManager::saveDishRotationLimit(StorageManager::LIMIT_TOP, limits[2],
-                                          true);
-    PEACH_LOGI(TAG, "Top limit set to %d%%", limits[2]);
-    break;
-
-  case DishRotationCmdAction::CLEAR_LIMIT_BOT:
-    limitSet[0] = false;
-    StorageManager::saveDishRotationLimit(StorageManager::LIMIT_BOT, limits[0],
-                                          false);
-    PEACH_LOGI(TAG, "Bottom limit cleared");
-    break;
-
-  case DishRotationCmdAction::CLEAR_LIMIT_MID:
-    limitSet[1] = false;
-    StorageManager::saveDishRotationLimit(StorageManager::LIMIT_MID, limits[1],
-                                          false);
-    PEACH_LOGI(TAG, "Middle limit cleared");
-    break;
-
-  case DishRotationCmdAction::CLEAR_LIMIT_TOP:
-    limitSet[2] = false;
-    StorageManager::saveDishRotationLimit(StorageManager::LIMIT_TOP, limits[2],
-                                          false);
-    PEACH_LOGI(TAG, "Top limit cleared");
-    break;
-
-  case DishRotationCmdAction::GET_LIMITS:
-    // Telemetry will include limit data automatically
-    break;
-  }
-}
-
-// Helper function for empirical piecewise linear interpolation
-static float interpolateTime(int pwm, const int pwms[], const float times[],
-                             int size) {
-  if (pwm <= pwms[0])
-    return times[0];
-  if (pwm >= pwms[size - 1])
-    return times[size - 1];
-
-  for (int i = 0; i < size - 1; i++) {
-    if (pwm >= pwms[i] && pwm <= pwms[i + 1]) {
-      float t = (float)(pwm - pwms[i]) / (float)(pwms[i + 1] - pwms[i]);
-      return times[i] + t * (times[i + 1] - times[i]);
+  case DishRotationCmdAction::STOP:
+    targetSpeed = 0;
+    if (!isTrackingTarget) {
+      PEACH_LOGD(TAG, "Rotation stopped");
     }
+    break;
+
+  case DishRotationCmdAction::SET_TARGET:
+    trackingTarget = cmd.value;
+    targetTrackingSpeed = cmd.targetSpeed;
+    isTrackingTarget = true;
+    PEACH_LOGI(TAG, "Rotation tracking target: %.2f steps at speed %d", trackingTarget, cmd.targetSpeed);
+    break;
+
+  case DishRotationCmdAction::JOG:
+    if (!isTrackingTarget) {
+      trackingTarget = currentPosition;
+      isTrackingTarget = true;
+    }
+    trackingTarget += cmd.value;
+    break;
+
+  case DishRotationCmdAction::ZERO_POS:
+    currentPosition = 0.0f;
+    PEACH_LOGI(TAG, "Rotation zeroed");
+    break;
   }
-  return times[size - 1];
 }
 
 void DishRotationNode::hwUpdate() {
-  float timeMs = 3000.0f; // Default safe fallback
+  // Update StallGuard threshold dynamically if changed
+  static int lastSg = -1;
+  int currentSg = 100;
+  if (xSemaphoreTake(systemStateMutex, 0) == pdTRUE) {
+      currentSg = systemState.dishRotationSGThreshold;
+      xSemaphoreGive(systemStateMutex);
+  }
+  if (currentSg != lastSg) {
+      driver.setStallGuardThreshold(currentSg);
+      lastSg = currentSg;
+  }
 
-  if (currentPercent < targetPercent) {
-    wasMoving = true;
-    // ==========================
-    // EXTENDING (Forward)
-    // Measured empirical data
-    // ==========================
-    const int pwms[] = {155, 165, 175, 205, 255};
-    const float times[] = {6000.0f, 4000.0f, 3000.0f, 1800.0f, 800.0f};
-    timeMs = interpolateTime(targetSpeedPWM, pwms, times, 5);
+  if (isTrackingTarget) {
+    float error = trackingTarget - currentPosition;
+    float Kp = 5.0f;
+    float desiredSpeedFloat = error * Kp;
+    int desiredSpeed = (int)constrain(desiredSpeedFloat, -targetTrackingSpeed, targetTrackingSpeed);
 
-    float dynamicPctPerTick =
-        (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / timeMs;
-    currentPercent += dynamicPctPerTick;
+    int maxAccelPerTick = targetTrackingSpeed / 100;
+    if (maxAccelPerTick < 10) maxAccelPerTick = 10;
 
-    if (currentPercent > targetPercent) {
-      currentPercent = targetPercent; // Clamp exact arrival
+    if (desiredSpeed > targetSpeed + maxAccelPerTick) {
+      targetSpeed += maxAccelPerTick;
+    } else if (desiredSpeed < targetSpeed - maxAccelPerTick) {
+      targetSpeed -= maxAccelPerTick;
+    } else {
+      targetSpeed = desiredSpeed;
     }
 
-  } else if (currentPercent > targetPercent) {
-    wasMoving = true;
-    // ==========================
-    // RETRACTING (Reverse)
-    // Measured empirical data
-    // ==========================
-    const int pwms[] = {155, 175, 205, 255};
-    const float times[] = {3000.0f, 3000.0f, 1500.0f, 800.0f};
-    timeMs = interpolateTime(targetSpeedPWM, pwms, times, 4);
-
-    float dynamicPctPerTick =
-        (100.0f * (float)TASK_UPDATE_INTERVAL_MS) / timeMs;
-    currentPercent -= dynamicPctPerTick;
-
-    if (currentPercent < targetPercent) {
-      currentPercent = targetPercent; // Clamp exact arrival
-    }
-
-  } else {
-
-    if (wasMoving) {
-      // Save position to NVS if it has changed since last save
-      if (std::abs(currentPercent - lastSavedPercent) > 0.1f) {
-        StorageManager::saveDishRotationPosition(currentPercent);
-        lastSavedPercent = currentPercent;
-        PEACH_LOGI(TAG, "Saved actuator position: %.2f%%", currentPercent);
-      }
-      xEventGroupSetBits(controlEvents, BIT_POS_REACHED_ACT);
-      wasMoving = false;
+    if (std::abs(error) < 2.0f && std::abs(targetSpeed) <= 10) {
+      currentPosition = trackingTarget;
+      targetSpeed = 0;
+      isTrackingTarget = false;
     }
   }
+
+  // StallGuard Detection
+  if (targetSpeed != 0) {
+      uint16_t sgResult = driver.getStallGuardResult();
+      // If SG Result drops to 0, motor is stalling.
+      // Usually need to ignore SG during acceleration.
+      if (sgResult == 0 && std::abs(targetSpeed) > 100) {
+          PEACH_LOGW(TAG, "Stall detected on Rotation!");
+          targetSpeed = 0;
+          isTrackingTarget = false;
+          LCD_setMessage("Rot: STALL!");
+      }
+  }
+
+  // Velocity control and position integration
+  if (targetSpeed != 0) {
+    float stepsPerSec = (float)targetSpeed * 0.715f;
+    float deltaPos = stepsPerSec * ((float)TASK_UPDATE_INTERVAL_MS / 1000.0f);
+    currentPosition += deltaPos;
+  }
+
+  driver.setVelocity(targetSpeed);
+
+  // Save position to NVS when stopped and position has changed
+  if (targetSpeed == 0 && previousTargetSpeed != 0) {
+    if (std::abs(currentPosition - lastSavedPosition) > 0.1f) {
+      StorageManager::saveDishRotationPosition(currentPosition);
+      lastSavedPosition = currentPosition;
+      PEACH_LOGI(TAG, "Saved rotation position: %.2f", currentPosition);
+    }
+    xEventGroupSetBits(controlEvents, BIT_POS_REACHED_ACT);
+  }
+  previousTargetSpeed = targetSpeed;
 }
 
 DishRotationTelemetry DishRotationNode::generateTelemetry() {
   DishRotationTelemetry tel;
-  tel.currentPercent = currentPercent;
-  tel.targetPercent = targetPercent;
-  tel.limits[0] = limits[0];
-  tel.limits[1] = limits[1];
-  tel.limits[2] = limits[2];
-  tel.limitSet[0] = limitSet[0];
-  tel.limitSet[1] = limitSet[1];
-  tel.limitSet[2] = limitSet[2];
+  tel.currentPosition = currentPosition;
+  tel.targetPosition = isTrackingTarget ? trackingTarget : currentPosition;
+  tel.isMoving = (targetSpeed != 0);
   return tel;
 }
 
-bool DishRotationNode::setTarget(int percent, int pwmSpeed) {
+bool DishRotationNode::setSpeed(int speed) {
+  DishRotationCommand cmd;
+  cmd.action = DishRotationCmdAction::SET_SPEED;
+  cmd.value = (float)speed;
+  return sendCommand(cmd);
+}
+
+bool DishRotationNode::stop() {
+  DishRotationCommand cmd;
+  cmd.action = DishRotationCmdAction::STOP;
+  cmd.value = 0.0f;
+  return sendCommand(cmd);
+}
+
+bool DishRotationNode::jog(float relativeSteps) {
+  DishRotationCommand cmd;
+  cmd.action = DishRotationCmdAction::JOG;
+  cmd.value = relativeSteps;
+  return sendCommand(cmd);
+}
+
+bool DishRotationNode::setTarget(float position, int targetSpeed) {
   DishRotationCommand cmd;
   cmd.action = DishRotationCmdAction::SET_TARGET;
-  cmd.value = percent;
-  cmd.pwmSpeed = pwmSpeed;
+  cmd.value = position;
+  cmd.targetSpeed = targetSpeed;
   return sendCommand(cmd);
 }
 
-bool DishRotationNode::setLimitBot(int percent) {
+bool DishRotationNode::zeroPosition() {
   DishRotationCommand cmd;
-  cmd.action = DishRotationCmdAction::SET_LIMIT_BOT;
-  cmd.value = percent;
-  return sendCommand(cmd);
-}
-
-bool DishRotationNode::setLimitMid(int percent) {
-  DishRotationCommand cmd;
-  cmd.action = DishRotationCmdAction::SET_LIMIT_MID;
-  cmd.value = percent;
-  return sendCommand(cmd);
-}
-
-bool DishRotationNode::setLimitTop(int percent) {
-  DishRotationCommand cmd;
-  cmd.action = DishRotationCmdAction::SET_LIMIT_TOP;
-  cmd.value = percent;
-  return sendCommand(cmd);
-}
-
-bool DishRotationNode::clearLimitBot() {
-  DishRotationCommand cmd;
-  cmd.action = DishRotationCmdAction::CLEAR_LIMIT_BOT;
-  cmd.value = 0;
-  return sendCommand(cmd);
-}
-
-bool DishRotationNode::clearLimitMid() {
-  DishRotationCommand cmd;
-  cmd.action = DishRotationCmdAction::CLEAR_LIMIT_MID;
-  cmd.value = 0;
-  return sendCommand(cmd);
-}
-
-bool DishRotationNode::clearLimitTop() {
-  DishRotationCommand cmd;
-  cmd.action = DishRotationCmdAction::CLEAR_LIMIT_TOP;
-  cmd.value = 0;
+  cmd.action = DishRotationCmdAction::ZERO_POS;
+  cmd.value = 0.0f;
   return sendCommand(cmd);
 }

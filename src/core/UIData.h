@@ -8,21 +8,25 @@ struct UIData {
   // S1 Arm — jog direction + position
   int scraperArmJogDir;     // -1, 0, +1
   float scraperArmPosition; // Current absolute step position
-  int scraperArmPosOut;     // Calibration: Out position (-1 = unset)
-  int scraperArmPosBuffer;  // Calibration: Buffer position (-1 = unset)
-  int scraperArmPosIn;      // Calibration: In position (-1 = unset)
+  int scraperArmPosClear;
+  int scraperArmPosScrape;
+  int scraperArmSGThreshold;
 
   // S2 Actuator — jog direction + position
   int dishRotationJogDir;  // -1, 0, +1
-  int dishRotationPercent; // Current position percent
-  int dishRotationLimits[3];
-  bool dishRotationLimitSet[3];
+  float dishRotationPos;
+  int dishRotationNumRotations;
+  int dishRotationSGThreshold;
 
   // S3 Z Motor — jog direction + position
   int dishLiftJogDir; // -1, 0, +1
   float dishLiftPos;
-  float dishLiftLimits[3];
-  bool dishLiftLimitSet[3];
+  float dishLiftPosHome;
+  float dishLiftPosTilt;
+  bool dishLiftPosHomeSet;
+  bool dishLiftPosTiltSet;
+  int dishLiftNumMix;
+  int dishLiftSGThreshold;
 
   // S4 Menu state
   S4Level0 s4Menu;

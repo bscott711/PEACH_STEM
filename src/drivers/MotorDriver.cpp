@@ -40,3 +40,19 @@ void motorDriver::stop() {
     xSemaphoreGive(tmcUartMutex);
   }
 }
+
+void motorDriver::setStallGuardThreshold(uint8_t threshold) {
+  if (xSemaphoreTake(tmcUartMutex, portMAX_DELAY) == pdTRUE) {
+    driver.setStallGuardThreshold(threshold);
+    xSemaphoreGive(tmcUartMutex);
+  }
+}
+
+uint16_t motorDriver::getStallGuardResult() {
+  uint16_t result = 0;
+  if (xSemaphoreTake(tmcUartMutex, portMAX_DELAY) == pdTRUE) {
+    result = driver.getStallGuardResult();
+    xSemaphoreGive(tmcUartMutex);
+  }
+  return result;
+}

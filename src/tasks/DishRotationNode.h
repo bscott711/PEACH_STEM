@@ -1,34 +1,30 @@
 #pragma once
 #include "tasks/ActiveMotionNode.h"
 #include "core/StorageManager.h"
+#include "drivers/MotorDriver.h"
 #include "messaging.h"
 
 /**
- * @brief Linear actuator control node using Active Object pattern.
+ * @brief Dish Rotation Stepper motor control node using Active Object pattern.
  *
- * Manages H-bridge driven actuator with float-based percentage tracking,
- * NVS-persisted limits (Bot/Mid/Top), and lock-free message passing.
+ * Encapsulates TMC2209 driver (Address 2) with float-based position tracking 
+ * and lock-free message passing.
  */
 class DishRotationNode
     : public ActiveMotionNode<DishRotationCommand, DishRotationTelemetry> {
 private:
-  // High-resolution position tracking (float percent for smooth ramping)
-  float currentPercent;
-  int targetPercent;
-  int targetSpeedPWM;
-  float lastSavedPercent;
-  bool wasMoving;
+  motorDriver driver;
 
-  // Limit positions (NVS persisted)
-  int limits[3];    // [0]=Bot, [1]=Mid, [2]=Top
-  bool limitSet[3]; // Whether each limit is configured
+  // Position tracking (float units)
+  float currentPosition;
+  int targetSpeed;
+  int previousTargetSpeed;
 
-  // NVS storage
+  float trackingTarget;  // Absolute position target for GOTO
+  bool isTrackingTarget; // True if GOTO active
+  int targetTrackingSpeed;
 
-  // Motion parameters
-  static constexpr uint32_t FULL_EXTEND_TIME_MS = 800; // Time 0% to 100%
-  static constexpr uint8_t MIN_ACTUATOR_PWM =
-      155; // Deadband: Minimum PWM required to physically move the actuator
+  float lastSavedPosition;
 
 public:
   DishRotationNode();
@@ -41,15 +37,9 @@ public:
   DishRotationTelemetry generateTelemetry() override;
 
   // Convenience methods for sending commands
-  bool setTarget(int percent, int pwmSpeed = 255);
-  bool setLimitBot(int percent);
-  bool setLimitMid(int percent);
-  bool setLimitTop(int percent);
-  bool clearLimitBot();
-  bool clearLimitMid();
-  bool clearLimitTop();
-
-  // Getters for limit data
-  int getLimit(int index) const { return limits[index]; }
-  bool isLimitSet(int index) const { return limitSet[index]; }
+  bool setSpeed(int speed);
+  bool stop();
+  bool jog(float relativeSteps);
+  bool setTarget(float position, int speed);
+  bool zeroPosition();
 };

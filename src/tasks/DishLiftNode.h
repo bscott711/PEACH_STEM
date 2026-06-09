@@ -29,16 +29,10 @@ private:
   float trackingTarget;  // Absolute position target for GOTO
   bool isTrackingTarget; // True if GOTO active
 
-  // Limit positions (NVS persisted)
-  float limits[3];  // [0]=Bot, [1]=Mid, [2]=Top
-  bool limitSet[3]; // Whether each limit is configured
-
-  // NVS storage
-
-  // Homing state machine
-  enum HomingState { H_IDLE, H_MOVING_TOP, H_BACKOFF, H_MOVING_BOT };
-  HomingState homingState;
-  TickType_t homingStartTime;
+  float posHome;
+  float posTilt;
+  bool posHomeSet;
+  bool posTiltSet;
 
   // Arm interlock data (read from telemetry)
   int armStepPos;
@@ -57,17 +51,12 @@ public:
   DishLiftTelemetry generateTelemetry() override;
 
   // Convenience methods for sending commands
-  bool setSpeed(int speed); // Note: Set speed to 0 for E-STOP
-  bool
-  setTarget(float position,
-            int speed); // Note: Set speed > 0, direction is auto-calculated
+  bool setSpeed(int speed);
+  bool setTarget(float position, int speed);
   bool startHoming();
-  bool setLimitBot(float position);
-  bool setLimitMid(float position);
-  bool setLimitTop(float position);
-  bool clearLimitBot();
-  bool clearLimitMid();
-  bool clearLimitTop();
+  bool setPosHome(float position);
+  bool setPosTilt(float position);
+  bool clearCal();
 
   // Getters for state
   float getPosition() const { return currentPosition; }
