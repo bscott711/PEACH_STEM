@@ -27,6 +27,8 @@ void setup() {
   // Initialize System State from NVS
   initSystemState();
 
+  // Steppers cannot be disabled via EN_PIN because it doesn't exist
+
   // Start I2C Line (Used by encoder)
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 

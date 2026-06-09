@@ -14,7 +14,7 @@
 #define I2C_SCL_PIN 13
 #define I2C_SDA_PIN 14
 #define ENCODER_INT_PIN 27
-#define ENCODER_I2C_ADDR 0x49
+#define ENCODER_I2C_ADDR 0x02
 
 // StallGuard DIAG Pins
 #define SG_DIAG1 26

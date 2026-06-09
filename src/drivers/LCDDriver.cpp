@@ -9,6 +9,7 @@
 #include "HardwareConfig.h"
 #include "controller.h"
 #include <U8g2lib.h>
+#include <SPI.h>
 
 /**
  * Mutex Lock Order Protocol (ALWAYS acquire in this order to prevent deadlock):
@@ -268,6 +269,7 @@ void draw_otaScreen() {
 }
 
 void LCDInit() {
+  SPI.begin(LCD_SCK, -1, LCD_MOSI, -1); // Prevent SPI from taking over pin 19 (MISO) which we use for CS
   u8g2.begin();
   u8g2.setBusClock(4000000); // Lower SPI speed to 4MHz to prevent screen tearing
   u8g2.sendF("ca", 0xd5, 0xf0); // Maximize internal oscillator freq to fix camera flicker

@@ -1,5 +1,6 @@
 #include "encoder_task.h"
 #include "drivers/EncoderDriver.h"
+#include "drivers/LCDDriver.h"
 #include <Arduino.h>
 
 static SemaphoreHandle_t encoderSem;
@@ -15,16 +16,15 @@ void encoderTask(void *pv) {
   init_encoder();
 
   while (true) {
-    // Sleep forever until the ISR yields the semaphore
-    xSemaphoreTake(encoderSem, portMAX_DELAY);
-
-    // Drain all pending interrupts while pin is held low
-    while (digitalRead(ENCODER_INT_PIN) == LOW) {
+    // Check if interrupt pin is low OR just poll it
+    if (digitalRead(ENCODER_INT_PIN) == LOW) {
       EncoderDriver_Service();
-
-      // Critical RTOS yield to prevent I2C blocking the watchdog
-      vTaskDelay(pdMS_TO_TICKS(1));
+    } else {
+      // Fallback: poll every 50ms anyway to guarantee we never miss events
+      EncoderDriver_Service();
     }
+    
+    vTaskDelay(pdMS_TO_TICKS(20)); // Poll at 50Hz
   }
 }
 
