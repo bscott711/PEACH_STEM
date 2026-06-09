@@ -104,19 +104,19 @@ void NetworkManager::init() {
       
       // Safety Interlocks
       if (dishLiftCmdQueue != NULL) {
-        DishLiftCommand stopMotor = { DishLiftCmdAction::SET_SPEED, 0.0f };
+        AxisCommand stopMotor = { AxisCmdAction::SET_SPEED, 0.0f, 0 };
         xQueueSend(dishLiftCmdQueue, &stopMotor, 0);
       }
       if (dishRotationCmdQueue != NULL) {
-        DishRotationCommand stopAct = { DishRotationCmdAction::SET_TARGET, 0, 0 };
-        DishRotationTelemetry actTel;
+        AxisCommand stopAct = { AxisCmdAction::SET_TARGET, 0.0f, 0 };
+        AxisTelemetry actTel;
         if (dishRotationTelQueue != NULL && xQueuePeek(dishRotationTelQueue, &actTel, 0) == pdPASS) {
           stopAct.value = actTel.currentPosition;
         }
         xQueueSend(dishRotationCmdQueue, &stopAct, 0);
       }
       if (scraperArmCmdQueue != NULL) {
-        ScraperArmCommand stopArm = { ScraperArmCmdAction::SET_SPEED, 0.0f };
+        AxisCommand stopArm = { AxisCmdAction::SET_SPEED, 0.0f, 0 };
         xQueueSend(scraperArmCmdQueue, &stopArm, 0);
       }
     })

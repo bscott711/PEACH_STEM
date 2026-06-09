@@ -92,27 +92,27 @@ void InputManager::populateUIData(UIData& data) {
     data.dishLiftJogDir = g_jogDirMotor;
 
     // Arm telemetry
-    ScraperArmTelemetry armTel;
+    AxisTelemetry armTel;
     if (xQueuePeek(scraperArmTelQueue, &armTel, 0) == pdPASS) {
         data.scraperArmPosition = armTel.currentPosition;
-        data.scraperArmPosClear = armTel.posClear;
-        data.scraperArmPosScrape = armTel.posScrape;
+        data.scraperArmPosClear = (int)armTel.posA;
+        data.scraperArmPosScrape = (int)armTel.posB;
     }
 
     // Actuator telemetry
-    DishRotationTelemetry actTel;
+    AxisTelemetry actTel;
     if (xQueuePeek(dishRotationTelQueue, &actTel, 0) == pdPASS) {
         data.dishRotationPos = actTel.currentPosition;
     }
 
     // Motor telemetry
-    DishLiftTelemetry motTel;
+    AxisTelemetry motTel;
     if (xQueuePeek(dishLiftTelQueue, &motTel, 0) == pdPASS) {
         data.dishLiftPos = motTel.currentPosition;
-        data.dishLiftPosHome = motTel.posHome;
-        data.dishLiftPosTilt = motTel.posTilt;
-        data.dishLiftPosHomeSet = motTel.posHomeSet;
-        data.dishLiftPosTiltSet = motTel.posTiltSet;
+        data.dishLiftPosHome = motTel.posA;
+        data.dishLiftPosTilt = motTel.posB;
+        data.dishLiftPosHomeSet = motTel.posASet;
+        data.dishLiftPosTiltSet = motTel.posBSet;
     }
 }
 
@@ -255,7 +255,7 @@ void InputManager::handleMotorEncoder() {
 
   // Auto-update jog indicator when motor is stopped by limit
   if (g_jogDirMotor != 0) {
-    DishLiftTelemetry motTel;
+    AxisTelemetry motTel;
     if (xQueuePeek(dishLiftTelQueue, &motTel, 0) == pdPASS) {
       if (motTel.targetSpeed == 0) {
         g_jogDirMotor = 0; // Motor hit a limit
@@ -296,23 +296,23 @@ void InputManager::handleMenuEncoder() {
   }
 
   // --- Read telemetry for position operations ---
-  ScraperArmTelemetry armTel;
+  AxisTelemetry armTel;
   int scraperArmPosClear = -1;
   int scraperArmPosScrape = -1;
   float armCurrentPos = 0;
   if (scraperArmTelQueue != NULL && xQueuePeek(scraperArmTelQueue, &armTel, 0) == pdPASS) {
-    scraperArmPosClear = armTel.posClear;
-    scraperArmPosScrape = armTel.posScrape;
+    scraperArmPosClear = armTel.posA;
+    scraperArmPosScrape = armTel.posB;
     armCurrentPos = armTel.currentPosition;
   }
 
-  DishRotationTelemetry actTel;
+  AxisTelemetry actTel;
   float actCurrentPos = 0;
   if (xQueuePeek(dishRotationTelQueue, &actTel, 0) == pdPASS) {
     actCurrentPos = actTel.currentPosition;
   }
 
-  DishLiftTelemetry motorTel;
+  AxisTelemetry motorTel;
   float motorPosHome = 0;
   float motorPosTilt = 0;
   bool motorPosHomeSet = false;
@@ -320,10 +320,10 @@ void InputManager::handleMenuEncoder() {
   float motorCurrentPos = 0;
   if (xQueuePeek(dishLiftTelQueue, &motorTel, 0) == pdPASS) {
     motorCurrentPos = motorTel.currentPosition;
-    motorPosHome = motorTel.posHome;
-    motorPosTilt = motorTel.posTilt;
-    motorPosHomeSet = motorTel.posHomeSet;
-    motorPosTiltSet = motorTel.posTiltSet;
+    motorPosHome = motorTel.posA;
+    motorPosTilt = motorTel.posB;
+    motorPosHomeSet = motorTel.posASet;
+    motorPosTiltSet = motorTel.posBSet;
   }
 
   // Check if auto is running — block menu actions
@@ -538,18 +538,18 @@ void InputManager::handleMenuEncoder() {
   if (longPress && !isBack && systemState.s4InSubMenu) {
     if (axis == S4_SCRAPER) {
       if (item == S4_SCRAPER_CLEAR) {
-        g_scraperArmNode.setPosClear();
+        g_scraperArmNode.setLimitA(armCurrentPos);
         LCD_setMessage("Arm: Clear Set");
       } else if (item == S4_SCRAPER_SCRAPE) {
-        g_scraperArmNode.setPosScrape();
+        g_scraperArmNode.setLimitB(armCurrentPos);
         LCD_setMessage("Arm: Scrape Set");
       }
     } else if (axis == S4_LIFT) {
       if (item == S4_LIFT_HOME) {
-        g_dishLiftNode.setPosHome(motorCurrentPos);
+        g_dishLiftNode.setLimitA(motorCurrentPos);
         LCD_setMessage("Z: Home Set");
       } else if (item == S4_LIFT_TILT) {
-        g_dishLiftNode.setPosTilt(motorCurrentPos);
+        g_dishLiftNode.setLimitB(motorCurrentPos);
         LCD_setMessage("Z: Tilt Set");
       }
     }
@@ -558,10 +558,10 @@ void InputManager::handleMenuEncoder() {
   // ---- Double Press: CLEAR position/calibration ----
   if (doublePress && !isBack && systemState.s4InSubMenu) {
     if (axis == S4_SCRAPER) {
-      g_scraperArmNode.clearCal();
+      g_scraperArmNode.clearLimits();
       LCD_setMessage("Arm: Cal Cleared");
     } else if (axis == S4_LIFT) {
-      g_dishLiftNode.clearCal();
+      g_dishLiftNode.clearLimits();
       LCD_setMessage("Z: Cal Cleared");
     }
   }

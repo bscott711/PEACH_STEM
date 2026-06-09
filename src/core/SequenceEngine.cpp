@@ -32,12 +32,12 @@ static bool wait_for_event(EventBits_t bitToWait) {
 }
 
 static bool move_lift(bool toTilt) {
-    DishLiftTelemetry motorTel;
+    AxisTelemetry motorTel;
     float currentPos = 0;
     float targetZ = 0;
     if (xQueuePeek(dishLiftTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
         currentPos = motorTel.currentPosition;
-        targetZ = toTilt ? motorTel.posTilt : motorTel.posHome;
+        targetZ = toTilt ? motorTel.posB : motorTel.posA;
     }
 
     if (std::abs(targetZ - currentPos) <= 0.1f) {
@@ -58,11 +58,11 @@ static bool move_lift(bool toTilt) {
 }
 
 static bool move_scraper(bool toScrape) {
-    ScraperArmTelemetry armTel;
+    AxisTelemetry armTel;
     if (xQueuePeek(scraperArmTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
-        if (armTel.posClear == -1 || armTel.posScrape == -1) return true; // Uncalibrated
+        if (!armTel.posASet || !armTel.posBSet) return true; // Uncalibrated
         
-        float targetAbs = toScrape ? 100.0f : 0.0f;
+        float targetAbs = toScrape ? armTel.posB : armTel.posA;
         if (std::abs(armTel.currentPosition - targetAbs) < 2.0f) {
             return true;
         }
