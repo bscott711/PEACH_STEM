@@ -1,6 +1,6 @@
-#include "core/StorageManager.h"
+#include "StorageManager.h"
 #include <Preferences.h>
-#include "core/NetworkManager.h"
+#include "NetworkManager.h"
 #include "esp_log.h"
 #include <array>
 

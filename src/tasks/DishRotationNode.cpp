@@ -1,4 +1,4 @@
-#include "tasks/DishRotationNode.h"
+#include "DishRotationNode.h"
 
 #include "controller.h"
 #include "core/NetworkManager.h"

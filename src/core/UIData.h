@@ -1,5 +1,5 @@
 #pragma once
-#include "core/SystemState.h"
+#include "SystemState.h"
 
 struct UIData {
   bool isAutoRunning;

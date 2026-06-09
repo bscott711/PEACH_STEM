@@ -1,4 +1,5 @@
-#include "tasks/LCD_task.h"
+#pragma once
+#include "LCD_task.h"
 #include "messaging.h"
 #include "core/UIData.h"
 #include "core/NetworkManager.h"

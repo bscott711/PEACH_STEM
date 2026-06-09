@@ -1,4 +1,4 @@
-#include "tasks/ScraperArmNode.h"
+#include "ScraperArmNode.h"
 #include "controller.h"
 #include "core/NetworkManager.h"
 #include "drivers/LCDDriver.h"

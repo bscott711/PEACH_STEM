@@ -1,4 +1,4 @@
-#include "tasks/encoder_task.h"
+#include "encoder_task.h"
 #include "drivers/EncoderDriver.h"
 #include <Arduino.h>
 

@@ -1,3 +1,4 @@
+#pragma once
 #include "controller.h"
 #include "messaging.h"
 #include "tasks/DishRotationNode.h"

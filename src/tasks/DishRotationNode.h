@@ -1,7 +1,7 @@
 #pragma once
+#include "ActiveMotionNode.h"
 #include "core/StorageManager.h"
 #include "messaging.h"
-#include "tasks/ActiveMotionNode.h"
 
 /**
  * @brief Linear actuator control node using Active Object pattern.

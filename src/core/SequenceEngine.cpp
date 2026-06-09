@@ -1,4 +1,4 @@
-#include "core/SequenceEngine.h"
+#include "SequenceEngine.h"
 #include "controller.h"
 #include "messaging.h"
 #include "tasks/DishLiftNode.h"
