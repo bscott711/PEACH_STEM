@@ -50,14 +50,3 @@
 #define TXD1 17 // ESP Transmits on physical TX2 pin
 #define RXD1 16 // ESP Receives on physical RX2 pin 
 
-// ==========================================
-// Z-Axis Optical Endstops
-// ==========================================
-#define ENABLE_OPTICAL_ENDSTOPS 0
-
-#define TOP_ENDSTOP_PIN 35 // Input Only Pin
-#define BOT_ENDSTOP_PIN 34 // Input Only Pin
-
-// ==========================================
-// H-Bridge removed, utilizing 3 Stepper Motors
-// ==========================================

@@ -88,11 +88,11 @@ static void draw_splashScreen() {
   u8g2.drawStr(50, 30, "PEACH");
 
   u8g2.setFont(u8g2_font_helvB18_tr);
-  u8g2.drawStr(66, 54, "PIT");
+  u8g2.drawStr(55, 54, "STEM");
 
   // Small version tag
   u8g2.setFont(u8g2_font_tiny5_tf);
-  u8g2.drawStr(50, 62, "v3.0");
+  u8g2.drawStr(50, 62, "v1.0");
 
   u8g2.sendBuffer();
 }

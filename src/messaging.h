@@ -98,8 +98,6 @@ struct DishLiftTelemetry {
     bool isHoming;         // Currently homing flag
     float limits[3];       // [0]=Bot, [1]=Mid, [2]=Top
     bool limitSet[3];      // Whether each limit is configured
-    bool topEndstopTriggered;
-    bool botEndstopTriggered;
 };
 
 extern QueueHandle_t dishLiftCmdQueue;

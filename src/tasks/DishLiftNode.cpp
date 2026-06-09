@@ -16,8 +16,6 @@ DishLiftNode::DishLiftNode()
     , isHomed(false)
     , isHoming(false)
     , motorLocked(false)
-    , topEndstopTriggered(false)
-    , botEndstopTriggered(false)
     , homingState(H_IDLE)
     , homingStartTime(0)
     , armStepPos(0)
@@ -32,12 +30,6 @@ DishLiftNode::~DishLiftNode() {
 }
 
 void DishLiftNode::hwInit() {
-    // Initialize hardware pins
-#if ENABLE_OPTICAL_ENDSTOPS
-    pinMode(TOP_ENDSTOP_PIN, INPUT);
-    pinMode(BOT_ENDSTOP_PIN, INPUT);
-#endif
-
     // Initialize TMC2209 driver for Z-Axis on Address 0
     vTaskDelay(pdMS_TO_TICKS(200));
     driver.begin(Serial1, TMC2209::SERIAL_ADDRESS_0);
@@ -146,60 +138,14 @@ void DishLiftNode::hwUpdate() {
         PEACH_LOGI(TAG, "Motor unlocked");
     }
 
-#if ENABLE_OPTICAL_ENDSTOPS
-    topEndstopTriggered = (digitalRead(TOP_ENDSTOP_PIN) == HIGH);
-    botEndstopTriggered = (digitalRead(BOT_ENDSTOP_PIN) == HIGH);
-#else
-    topEndstopTriggered = false;
-    botEndstopTriggered = false;
-#endif
-
-    // --- OPTICAL HOMING STATE MACHINE ---
+    // --- HOMING STATE MACHINE ---
     if (homingState != H_IDLE) {
-        switch (homingState) {
-            case H_MOVING_TOP:
-                // Move towards TOP endstop (positive velocity)
-                driver.setVelocity(20000);
-                homingStartTime = xTaskGetTickCount();
-                homingState = H_BACKOFF;
-                break;
-                
-            case H_BACKOFF:
-                if (topEndstopTriggered) {
-                    driver.setVelocity(0);
-                    PEACH_LOGI(TAG, "Homing complete (Top triggered)!");
-                    
-                    currentPosition = 0.0f; // Top is 0 or Max Limit depending on configuration.
-                    // Assuming Top is 0 for clearance.
-                    isHomed = true;
-                    isHoming = false;
-                    targetSpeed = 0;
-                    homingState = H_IDLE;
-                    
-                    StorageManager::saveDishLiftState(true, 0.0f);
-                } else if (xTaskGetTickCount() - homingStartTime > pdMS_TO_TICKS(15000)) {
-                    PEACH_LOGE(TAG, "Homing timeout");
-                    LCD_setMessage("Homing: TIMEOUT");
-                    driver.setVelocity(0);
-                    isHoming = false;
-                    targetSpeed = 0;
-                    homingState = H_IDLE;
-                }
-                break;
-                
-            default:
-                break;
-        }
-#if ENABLE_OPTICAL_ENDSTOPS
-        return; // Skip normal operation during homing
-#else
-        // If endstops are disabled, simulate instant homing
+        // Endstops removed. Simulate instant homing for now until StallGuard is implemented.
         driver.setVelocity(0);
         isHomed = true;
         isHoming = false;
         targetSpeed = 0;
         homingState = H_IDLE;
-#endif
     }
     
     // --- LIVE POSITION TRACKING & LIMITS ---
@@ -314,17 +260,7 @@ void DishLiftNode::hwUpdate() {
             }
         }
         
-        // Home position hard stop checks removed as we now rely on optical limit switches
-    }
-    
-    // Hardware Endstop Overrides
-    if (topEndstopTriggered && targetSpeed > 0) {
-        targetSpeed = 0;
-        LCD_setMessage("TOP ENDSTOP!");
-    }
-    if (botEndstopTriggered && targetSpeed < 0) {
-        targetSpeed = 0;
-        LCD_setMessage("BOT ENDSTOP!");
+        // Hard stop checks removed
     }
     
     // Apply speed command to driver
@@ -357,8 +293,6 @@ DishLiftTelemetry DishLiftNode::generateTelemetry() {
     tel.limitSet[0] = limitSet[0];
     tel.limitSet[1] = limitSet[1];
     tel.limitSet[2] = limitSet[2];
-    tel.topEndstopTriggered = topEndstopTriggered;
-    tel.botEndstopTriggered = botEndstopTriggered;
     return tel;
 }
 
