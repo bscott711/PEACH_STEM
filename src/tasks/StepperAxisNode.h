@@ -27,8 +27,8 @@ struct StepperAxisConfig {
     // Load limits
     void (*loadLimitsFn)(float&, float&, bool&, bool&);
 
-    // Get SG threshold from system state
-    int (*getSGThresholdFn)();
+    // Initial StallGuard threshold loaded from NVS
+    int initialSgThreshold;
 
     // Position integration multiplier (how many steps per second per unit of targetSpeed)
     float velocityMultiplier;
@@ -59,6 +59,7 @@ protected:
     bool isHomed;
     
     bool motorLocked;
+    int currentSgThreshold; // StallGuard Threshold
 
     // Override this in derived classes to implement custom interlocks
     // Return true if movement should be blocked
@@ -83,4 +84,5 @@ public:
     bool clearLimits();
     bool zeroPosition();
     bool startHoming();
+    bool setSGThreshold(int threshold);
 };

@@ -5,17 +5,16 @@
 
 static void saveClear(float pos) { StorageManager::saveScraperArmPosClear((int)pos); }
 static void saveScrape(float pos) { StorageManager::saveScraperArmPosScrape((int)pos); }
-static void loadLim(float& a, float& b, bool& aSet, bool& bSet) {
-    int iA, iB;
-    StorageManager::loadScraperArmCalibration(iA, iB);
-    a = (float)iA;
-    b = (float)iB;
-    aSet = (iA != -1);
-    bSet = (iB != -1);
+static void loadLim(float& A, float& B, bool& ASet, bool& BSet) {
+    int pa, pb;
+    StorageManager::loadScraperArmCalibration(pa, pb);
+    if (pa != -1 && pb != -1) {
+        A = pa; B = pb;
+        ASet = true; BSet = true;
+    }
 }
 static void savePos(float pos) { StorageManager::saveScraperArmPosition(pos); }
 static float loadPos() { return StorageManager::loadScraperArmPosition(); }
-static int getSG() { return systemState.scraperArmSGThreshold; }
 
 ScraperArmNode::ScraperArmNode() : StepperAxisNode({
     "ARM_NODE",
@@ -23,8 +22,9 @@ ScraperArmNode::ScraperArmNode() : StepperAxisNode({
     TMC2209::SERIAL_ADDRESS_1,
     -1, -1, -1,
     true, // has limits
-    savePos, loadPos, saveClear, saveScrape, loadLim, getSG,
-    0.715f // Arm velocity multiplier
+    savePos, loadPos, saveClear, saveScrape, loadLim,
+    StorageManager::loadScraperArmSGThreshold(100), // initial SG Threshold
+    ROT_VEL_MULT // Arm velocity multiplier
 }) {}
 
 ScraperArmNode::~ScraperArmNode() {}
@@ -36,11 +36,21 @@ bool ScraperArmNode::checkInterlock(int desiredSpeed) {
     if (desiredSpeed > 0) {
         AxisTelemetry liftTel;
         if (dishLiftTelQueue != NULL && xQueuePeek(dishLiftTelQueue, &liftTel, 0) == pdPASS) {
+            uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+            if ((now - liftTel.timestamp) > 500) {
+                LCD_setMessage("Arm Blocked: Timeout");
+                return true;
+            }
+
             // Check if lift is not in Home position (posA)
             if (!liftTel.posASet || std::abs(liftTel.currentPosition - liftTel.posA) > 5.0f) {
                 LCD_setMessage("Arm Blocked: Lift!");
                 return true;
             }
+        } else {
+            // Queue is empty or null, block just in case
+            LCD_setMessage("Arm Blocked: No Tel");
+            return true;
         }
     }
     return false;

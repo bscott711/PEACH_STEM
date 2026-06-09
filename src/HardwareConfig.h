@@ -45,6 +45,16 @@
 #define MOTOR_MAX_SAFE_ACCEL 4000
 #define RUN_CURRENT_PERCENT 100
 
+// ==========================================
+// Tracking & Integration Constants
+// ==========================================
+#define MOTOR_TRACKING_KP 5.0f
+#define MOTOR_TARGET_TOLERANCE 2.0f
+#define MOTOR_LIMIT_DECEL_DIST 5.0f
+#define MOTOR_DEFAULT_JOG_SPEED 5000
+#define Z_VEL_MULT 1.372e-6f
+#define ROT_VEL_MULT 0.715f
+
 // Serial1 mapped to RX2/TX2 pins on standard WROOM ESP32
 // Swapped in software to handle straight-through wiring (Driver TX -> ESP TX2, Driver RX -> ESP RX2)
 #define TXD1 17 // ESP Transmits on physical TX2 pin

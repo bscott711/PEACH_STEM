@@ -22,7 +22,8 @@ enum class AxisCmdAction {
   CLEAR_CAL,       // Clear calibration limits
   JOG,             // Jog target by relative steps
   ZERO_POS,        // Set current position as 0 (used for continuous)
-  START_HOMING     // Start homing sequence
+  START_HOMING,    // Start homing sequence
+  SET_SG_THRESHOLD // Set StallGuard threshold
 };
 
 struct AxisCommand {
@@ -42,6 +43,7 @@ struct AxisTelemetry {
   bool isMoving;         // True if motor is actively running
   bool isHoming;
   bool isHomed;
+  uint32_t timestamp;    // Telemetry timestamp (FreeRTOS ticks * portTICK_PERIOD_MS)
 };
 
 // Queue definitions

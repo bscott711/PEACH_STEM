@@ -71,17 +71,139 @@ static void draw_peachLogo() {
   u8g2.drawLine(cx + 7, cy - r - 4, cx + 14, cy - r - 3);
 }
 
+struct BranchSegment {
+    float x0, y0;
+    float x1_full, y1_full;
+    float startP, endP;
+    bool isLeaf;
+    int peachIndex;
+};
+#define MAX_TREE_SEGMENTS 250
+static BranchSegment treeSegments[MAX_TREE_SEGMENTS];
+static int numTreeSegments = 0;
 static int fallingPeachLeafIndex = -1;
 static int currentLeaf = 0;
-static void drawBranch(int progress, float rootX, float x, float y, float len, float angle, int depth, int pathIndex);
+
+static float hash_fn(int a, int b) {
+  float h = sinf(a * 12.9898f + b * 78.233f) * 43758.5453123f;
+  return h - floorf(h);
+}
+
+static float clamp(float val, float min, float max) {
+  if (val < min) return min;
+  if (val > max) return max;
+  return val;
+}
+
+static void precalculateTree(float x, float y, float len, float angle, int depth, int pathIndex) {
+  if (numTreeSegments >= MAX_TREE_SEGMENTS) return;
+  const int maxDepth = 4;
+  
+  float startP, endP;
+  if (depth == 0) {
+    startP = 0; endP = 20;
+  } else {
+    float depthSlice = 30.0f / maxDepth;
+    startP = 20 + (depth - 1) * depthSlice;
+    endP = startP + depthSlice;
+  }
+
+  float endX_full = x + len * sinf(angle);
+  float endY_full = y - len * cosf(angle);
+
+  BranchSegment& seg = treeSegments[numTreeSegments++];
+  seg.x0 = x; seg.y0 = y;
+  seg.x1_full = endX_full; seg.y1_full = endY_full;
+  seg.startP = startP; seg.endP = endP;
+  seg.isLeaf = false;
+  seg.peachIndex = -1;
+
+  if (depth < maxDepth) {
+    float leftLenMod = 0.65f + hash_fn(pathIndex, 1) * 0.15f;
+    float rightLenMod = 0.65f + hash_fn(pathIndex, 2) * 0.15f;
+    float leftAngleMod = 0.45f + hash_fn(pathIndex, 3) * 0.4f;
+    float rightAngleMod = 0.45f + hash_fn(pathIndex, 4) * 0.4f;
+
+    precalculateTree(endX_full, endY_full, len * leftLenMod, angle - leftAngleMod, depth + 1, pathIndex * 2);
+    precalculateTree(endX_full, endY_full, len * rightLenMod, angle + rightAngleMod, depth + 1, pathIndex * 2 + 1);
+
+    if (hash_fn(pathIndex, 5) > 0.5f) { 
+       precalculateTree(endX_full, endY_full, len * 0.5f, angle + (hash_fn(pathIndex, 6) * 0.2f - 0.1f), depth + 1, pathIndex * 2 + 2);
+    }
+  }
+
+  if (depth >= 2 && hash_fn(pathIndex, 11) > 0.3f) {
+    if (numTreeSegments < MAX_TREE_SEGMENTS) {
+        BranchSegment& leafSeg = treeSegments[numTreeSegments++];
+        leafSeg.x0 = endX_full; leafSeg.y0 = endY_full;
+        leafSeg.startP = 50 + hash_fn(pathIndex, 7) * 15; 
+        leafSeg.endP = leafSeg.startP + 15;
+        leafSeg.isLeaf = true;
+        leafSeg.peachIndex = -1;
+    }
+  }
+
+  if (depth == maxDepth) {
+    currentLeaf++;
+    if (currentLeaf == 8 || currentLeaf == 25 || currentLeaf == 45) {
+      if (numTreeSegments < MAX_TREE_SEGMENTS) {
+          if (fallingPeachLeafIndex == -1 && abs((int)endX_full) > 12) fallingPeachLeafIndex = currentLeaf;
+          BranchSegment& peachSeg = treeSegments[numTreeSegments++];
+          peachSeg.x0 = endX_full; peachSeg.y0 = endY_full;
+          peachSeg.startP = 80.0f; peachSeg.endP = 90.0f;
+          peachSeg.isLeaf = false;
+          peachSeg.peachIndex = currentLeaf;
+      }
+    }
+  }
+}
+
+static void drawTree(int progress, float offsetX) {
+    for (int i = 0; i < numTreeSegments; i++) {
+        const BranchSegment& seg = treeSegments[i];
+        if (seg.isLeaf) {
+            float leafGrowth = clamp((progress - seg.startP) / (seg.endP - seg.startP), 0.0f, 1.0f);
+            if (leafGrowth > 0) {
+                int r = (int)(2.0f * leafGrowth);
+                if (r > 0) u8g2.drawDisc((int)(seg.x0 + offsetX), (int)seg.y0, r);
+            }
+            continue;
+        }
+        if (seg.peachIndex != -1) {
+            if (progress > 80) {
+                float peachGrowth = clamp((progress - 80.0f) / 10.0f, 0.0f, 1.0f);
+                float pY = seg.y0;
+                if (progress > 90 && seg.peachIndex == fallingPeachLeafIndex) {
+                    float fallProgress = clamp((progress - 90.0f) / 10.0f, 0.0f, 1.0f);
+                    pY += (62.0f - seg.y0) * fallProgress * fallProgress;
+                    if (pY > 60.0f) pY = 60.0f;
+                }
+                if (peachGrowth > 0) {
+                    int radius = (int)(4.0f * peachGrowth);
+                    if (radius > 0) {
+                        int px = (int)(seg.x0 + offsetX);
+                        u8g2.drawDisc(px, (int)pY, radius);
+                        u8g2.setDrawColor(0);
+                        u8g2.drawLine(px, (int)(pY - radius), px, (int)(pY + radius - 1));
+                        u8g2.setDrawColor(1);
+                    }
+                }
+            }
+            continue;
+        }
+        float growth = clamp((progress - seg.startP) / (seg.endP - seg.startP), 0.0f, 1.0f);
+        if (growth > 0) {
+            float currX = seg.x0 + (seg.x1_full - seg.x0) * growth;
+            float currY = seg.y0 + (seg.y1_full - seg.y0) * growth;
+            u8g2.drawLine((int)(seg.x0 + offsetX), (int)seg.y0, (int)(currX + offsetX), (int)currY);
+        }
+    }
+}
 
 static void draw_splashScreen() {
   u8g2.clearBuffer();
 
-  currentLeaf = 0;
-  fallingPeachLeafIndex = -1;
-  drawBranch(100, 32.0f, 32.0f, 64.0f, 12.0f, 0.0f, 0, 1);
-
+  drawTree(100, 32.0f);
 
   // === Text (right of peach) ===
   u8g2.setFont(u8g2_font_helvB14_tr);
@@ -100,9 +222,7 @@ static void draw_splashScreen() {
 void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool failed) {
   u8g2.clearBuffer();
 
-  currentLeaf = 0;
-  fallingPeachLeafIndex = -1;
-  drawBranch(100, 32.0f, 32.0f, 64.0f, 12.0f, 0.0f, 0, 1);
+  drawTree(100, 32.0f);
 
   // WiFi Connection text on the right
   u8g2.setFont(u8g2_font_helvB08_tr);
@@ -132,136 +252,13 @@ void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool fai
   u8g2.sendBuffer();
 }
 
-// Deterministic hash function for organic but stable procedural generation
-static float hash_fn(int a, int b) {
-  float h = sinf(a * 12.9898f + b * 78.233f) * 43758.5453123f;
-  return h - floorf(h);
-}
-
-static float clamp(float val, float min, float max) {
-  if (val < min) return min;
-  if (val > max) return max;
-  return val;
-}
-
-// Recursive function to draw the tree dynamically
-static void drawBranch(int progress, float rootX, float x, float y, float len, float angle, int depth, int pathIndex) {
-  const int maxDepth = 4; // Max depth 4 for 128x64 screen performance
-
-  // Calculate the timing for this specific depth
-  float startP, endP;
-  if (depth == 0) {
-    startP = 0; endP = 20;
-  } else {
-    float depthSlice = 30.0f / maxDepth;
-    startP = 20 + (depth - 1) * depthSlice;
-    endP = startP + depthSlice;
-  }
-
-  float growth = clamp((progress - startP) / (endP - startP), 0.0f, 1.0f);
-
-  if (growth > 0) {
-    float currentLen = len * growth;
-    float endX = x + currentLen * sinf(angle);
-    float endY = y - currentLen * cosf(angle);
-
-    // Draw the branch line
-    u8g2.drawLine((int)x, (int)y, (int)endX, (int)endY);
-
-    // --- STAGE 2: The Branches (20% - 50%) ---
-    if (depth < maxDepth && progress > endP) {
-      // Generate procedural but deterministic branch angles and lengths
-      float leftLenMod = 0.65f + hash_fn(pathIndex, 1) * 0.15f;
-      float rightLenMod = 0.65f + hash_fn(pathIndex, 2) * 0.15f;
-      // Increased branch angles to spread them out more
-      float leftAngleMod = 0.45f + hash_fn(pathIndex, 3) * 0.4f;
-      float rightAngleMod = 0.45f + hash_fn(pathIndex, 4) * 0.4f;
-
-      // Spawn left and right children
-      drawBranch(progress, rootX, endX, endY, len * leftLenMod, angle - leftAngleMod, depth + 1, pathIndex * 2);
-      drawBranch(progress, rootX, endX, endY, len * rightLenMod, angle + rightAngleMod, depth + 1, pathIndex * 2 + 1);
-
-      // Occasionally spawn a middle branch for organic density
-      // Increased probability of middle branch for a fuller tree
-      if (hash_fn(pathIndex, 5) > 0.5f) { 
-         drawBranch(progress, rootX, endX, endY, len * 0.5f, angle + (hash_fn(pathIndex, 6) * 0.2f - 0.1f), depth + 1, pathIndex * 2 + 2);
-      }
-    }
-
-    // --- STAGE 3: The Leaves (50% - 80%) ---
-    // Increased leaf density for a fuller look (70% chance of leaf)
-    if (depth >= 2 && hash_fn(pathIndex, 11) > 0.3f) {
-      float leafStart = 50 + hash_fn(pathIndex, 7) * 15;
-      float leafEnd = leafStart + 15;
-      
-      float leafGrowth = clamp((progress - leafStart) / (leafEnd - leafStart), 0.0f, 1.0f);
-      
-      if (leafGrowth > 0) {
-        // Just draw a small circle for leaves on the OLED
-        int r = (int)(2.0f * leafGrowth);
-        if (r > 0) {
-            u8g2.drawDisc((int)endX, (int)endY, r);
-        }
-      }
-    }
-
-    // --- STAGE 4: The Peaches (80% - 100%) ---
-    if (depth == maxDepth) {
-      currentLeaf++;
-      
-      // Only spawn exactly three peaches
-      if (currentLeaf == 8 || currentLeaf == 25 || currentLeaf == 45) {
-        if (progress > 80) {
-          float peachGrowth = clamp((progress - 80.0f) / 10.0f, 0.0f, 1.0f); // Grow faster (80-90)
-          
-          float pY = endY;
-          
-          // Pick the first peach that is far enough from the center to be the falling peach
-          if (fallingPeachLeafIndex == -1 && abs((int)endX - (int)rootX) > 12) {
-              fallingPeachLeafIndex = currentLeaf;
-          }
-          
-          // Peach falling animation (90% - 100%)
-          if (progress > 90 && currentLeaf == fallingPeachLeafIndex) {
-               float fallProgress = clamp((progress - 90.0f) / 10.0f, 0.0f, 1.0f);
-               // Quadratic fall: distance = 1/2 * g * t^2
-               pY += (62.0f - endY) * fallProgress * fallProgress; 
-               // Stop at ground
-               if (pY > 60.0f) pY = 60.0f;
-          }
-
-          if (peachGrowth > 0) {
-            int radius = (int)(4.0f * peachGrowth); // slightly smaller peaches
-            if (radius > 0) {
-                // Draw small peach body (circle with cleft line)
-                u8g2.drawDisc((int)endX, (int)pY, radius);
-                u8g2.setDrawColor(0);
-                u8g2.drawLine((int)endX, (int)(pY - radius), (int)endX, (int)(pY + radius - 1));
-                u8g2.setDrawColor(1);
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
 void draw_otaScreen() {
   u8g2.clearBuffer();
 
   int otaProgress = NetworkManager::getOTAProgress();
   const char* otaStatus = NetworkManager::getOTAStatus();
 
-  // Reset falling peach tracker for this frame
-  fallingPeachLeafIndex = -1;
-  currentLeaf = 0;
-
-  // Draw the growing tree!
-  int startX = 64; // Center
-  int startY = 64; // Bottom of screen
-  float baseTrunkLength = 12.0f; // Shorter trunk
-  
-  drawBranch(otaProgress, startX, startX, startY, baseTrunkLength, 0.0f, 0, 1);
+  drawTree(otaProgress, 64.0f);
 
   // UI Overlay - Top Left
   u8g2.setFont(u8g2_font_tiny5_tf);

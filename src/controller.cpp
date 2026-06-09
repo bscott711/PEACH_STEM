@@ -65,10 +65,17 @@ void initSystemState() {
     // Load speeds from NVS with defaults
     systemState.scraperArmJogSpeed = StorageManager::loadScraperArmJogSpeed(5000);
     systemState.scraperArmGoSpeed = StorageManager::loadScraperArmGoSpeed(5000);
+    systemState.scraperArmSGThreshold = StorageManager::loadScraperArmSGThreshold(100);
+
     systemState.dishRotationJogSpeed = StorageManager::loadDishRotationJogSpeed(128);
     systemState.dishRotationGoSpeed = StorageManager::loadDishRotationGoSpeed(128);
+    systemState.dishRotationNumRotations = StorageManager::loadDishRotationNumRotations(3);
+    systemState.dishRotationSGThreshold = StorageManager::loadDishRotationSGThreshold(100);
+
     systemState.dishLiftJogSpeed = StorageManager::loadDishLiftJogSpeed(5000);
     systemState.dishLiftGoSpeed = StorageManager::loadDishLiftGoSpeed(5000);
+    systemState.dishLiftNumMix = StorageManager::loadDishLiftNumMix(3);
+    systemState.dishLiftSGThreshold = StorageManager::loadDishLiftSGThreshold(100);
     
     systemState.collisionDetected = false;
     xSemaphoreGive(systemStateMutex);

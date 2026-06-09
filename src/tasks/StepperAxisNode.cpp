@@ -8,7 +8,7 @@ StepperAxisNode::StepperAxisNode(const StepperAxisConfig& cfg)
     : config(cfg), currentPosition(0.0f), targetSpeed(0), previousTargetSpeed(0),
       isTrackingTarget(false), trackingTarget(0.0f), targetTrackingSpeed(0),
       lastSavedPosition(-999.0f), limitA(0.0f), limitB(0.0f), limitASet(false),
-      limitBSet(false), isHoming(false), isHomed(false), motorLocked(false) {}
+      limitBSet(false), isHoming(false), isHomed(false), motorLocked(false), currentSgThreshold(cfg.initialSgThreshold) {}
 
 StepperAxisNode::~StepperAxisNode() {}
 
@@ -29,11 +29,7 @@ void StepperAxisNode::hwInit() {
         config.loadLimitsFn(limitA, limitB, limitASet, limitBSet);
     }
 
-    int sg = 100;
-    if (config.getSGThresholdFn) {
-        sg = config.getSGThresholdFn();
-    }
-    driver.setStallGuardThreshold(sg);
+    driver.setStallGuardThreshold(currentSgThreshold);
 
     ESP_LOGI(config.axisName, "Loaded Limits: A=%.2f(%s) B=%.2f(%s) Pos=%.1f",
              limitA, limitASet ? "Y" : "N",
@@ -63,7 +59,7 @@ void StepperAxisNode::processCommand(const AxisCommand& cmd) {
         }
         trackingTarget += cmd.value;
         // JOG assumes we already set targetSpeed via SET_SPEED or we default to a safe speed.
-        targetTrackingSpeed = std::abs(targetSpeed) > 0 ? std::abs(targetSpeed) : 5000;
+        targetTrackingSpeed = std::abs(targetSpeed) > 0 ? std::abs(targetSpeed) : MOTOR_DEFAULT_JOG_SPEED;
         break;
 
     case AxisCmdAction::START_HOMING:
@@ -100,16 +96,17 @@ void StepperAxisNode::processCommand(const AxisCommand& cmd) {
         if (config.savePositionFn) config.savePositionFn(0.0f);
         ESP_LOGI(config.axisName, "Position zeroed");
         break;
+
+    case AxisCmdAction::SET_SG_THRESHOLD:
+        currentSgThreshold = (int)cmd.value;
+        ESP_LOGI(config.axisName, "SG Threshold updated to %d", currentSgThreshold);
+        break;
     }
 }
 
 void StepperAxisNode::hwUpdate() {
     // 1. Update StallGuard dynamically
-    int currentSg = 100;
-    if (config.getSGThresholdFn) {
-        currentSg = config.getSGThresholdFn();
-    }
-    driver.setStallGuardThreshold(currentSg);
+    driver.setStallGuardThreshold(currentSgThreshold);
 
     // 2. Interlock check
     if (checkInterlock(targetSpeed)) {
@@ -143,8 +140,7 @@ void StepperAxisNode::hwUpdate() {
         // Calculate proportional control for tracking target
         if (isTrackingTarget) {
             float error = trackingTarget - currentPosition;
-            float Kp = 5.0f;
-            float desiredSpeedFloat = error * Kp;
+            float desiredSpeedFloat = error * MOTOR_TRACKING_KP;
             int desiredSpeed = (int)constrain(desiredSpeedFloat, -targetTrackingSpeed, targetTrackingSpeed);
 
             int maxAccelPerTick = targetTrackingSpeed / 100;
@@ -158,7 +154,7 @@ void StepperAxisNode::hwUpdate() {
                 targetSpeed = desiredSpeed;
             }
 
-            if (std::abs(error) < 2.0f && std::abs(targetSpeed) <= 10) {
+            if (std::abs(error) < MOTOR_TARGET_TOLERANCE && std::abs(targetSpeed) <= 10) {
                 currentPosition = trackingTarget;
                 targetSpeed = 0;
                 isTrackingTarget = false;
@@ -168,8 +164,8 @@ void StepperAxisNode::hwUpdate() {
 
         // Apply Limits (Soft Endstops) if enabled
         if (config.hasLimits && !isHoming && targetSpeed != 0) {
-            float minLim = min(limitA, limitB);
-            float maxLim = max(limitA, limitB);
+            float minLim = std::min(limitA, limitB);
+            float maxLim = std::max(limitA, limitB);
             bool minSet = (limitA <= limitB) ? limitASet : limitBSet;
             bool maxSet = (limitA >= limitB) ? limitASet : limitBSet;
 
@@ -180,11 +176,11 @@ void StepperAxisNode::hwUpdate() {
                     currentPosition = minLim;
                     isTrackingTarget = false;
                     LCD_setMessage("Min Limit Reached");
-                } else if (distToBot < 5.0f) {
+                } else if (distToBot < MOTOR_LIMIT_DECEL_DIST) {
                     int minSpeed = 1000;
                     int maxSpeed = std::abs(targetSpeed);
                     if (maxSpeed > minSpeed) {
-                        targetSpeed = -(minSpeed + (int)((maxSpeed - minSpeed) * (distToBot / 5.0f)));
+                        targetSpeed = -(minSpeed + (int)((maxSpeed - minSpeed) * (distToBot / MOTOR_LIMIT_DECEL_DIST)));
                     }
                 }
             } else if (targetSpeed > 0 && maxSet) {
@@ -194,11 +190,11 @@ void StepperAxisNode::hwUpdate() {
                     currentPosition = maxLim;
                     isTrackingTarget = false;
                     LCD_setMessage("Max Limit Reached");
-                } else if (distToTop < 5.0f) {
+                } else if (distToTop < MOTOR_LIMIT_DECEL_DIST) {
                     int minSpeed = 1000;
                     int maxSpeed = std::abs(targetSpeed);
                     if (maxSpeed > minSpeed) {
-                        targetSpeed = minSpeed + (int)((maxSpeed - minSpeed) * (distToTop / 5.0f));
+                        targetSpeed = minSpeed + (int)((maxSpeed - minSpeed) * (distToTop / MOTOR_LIMIT_DECEL_DIST));
                     }
                 }
             }
@@ -254,6 +250,7 @@ AxisTelemetry StepperAxisNode::generateTelemetry() {
     tel.isMoving = (targetSpeed != 0);
     tel.isHoming = isHoming;
     tel.isHomed = isHomed;
+    tel.timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
     return tel;
 }
 
@@ -318,5 +315,12 @@ bool StepperAxisNode::startHoming() {
     AxisCommand cmd;
     cmd.action = AxisCmdAction::START_HOMING;
     cmd.value = 0.0f;
+    return sendCommand(cmd);
+}
+
+bool StepperAxisNode::setSGThreshold(int threshold) {
+    AxisCommand cmd;
+    cmd.action = AxisCmdAction::SET_SG_THRESHOLD;
+    cmd.value = (float)threshold;
     return sendCommand(cmd);
 }

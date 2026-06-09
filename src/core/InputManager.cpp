@@ -488,17 +488,26 @@ void InputManager::handleMenuEncoder() {
         if (axis == S4_SCRAPER) {
           if (item == S4_SCRAPER_JOG_SPD) StorageManager::saveScraperArmJogSpeed(systemState.scraperArmJogSpeed);
           else if (item == S4_SCRAPER_GO_SPD) StorageManager::saveScraperArmGoSpeed(systemState.scraperArmGoSpeed);
-          else if (item == S4_SCRAPER_SG_TUNE) StorageManager::saveScraperArmSGThreshold(systemState.scraperArmSGThreshold);
+          else if (item == S4_SCRAPER_SG_TUNE) {
+            StorageManager::saveScraperArmSGThreshold(systemState.scraperArmSGThreshold);
+            g_scraperArmNode.setSGThreshold(systemState.scraperArmSGThreshold);
+          }
         } else if (axis == S4_ROTATION) {
           if (item == S4_ROT_JOG_SPD) StorageManager::saveDishRotationJogSpeed(systemState.dishRotationJogSpeed);
           else if (item == S4_ROT_GO_SPD) StorageManager::saveDishRotationGoSpeed(systemState.dishRotationGoSpeed);
           else if (item == S4_ROT_NUM_ROTATIONS) StorageManager::saveDishRotationNumRotations(systemState.dishRotationNumRotations);
-          else if (item == S4_ROT_SG_TUNE) StorageManager::saveDishRotationSGThreshold(systemState.dishRotationSGThreshold);
+          else if (item == S4_ROT_SG_TUNE) {
+            StorageManager::saveDishRotationSGThreshold(systemState.dishRotationSGThreshold);
+            g_dishRotationNode.setSGThreshold(systemState.dishRotationSGThreshold);
+          }
         } else if (axis == S4_LIFT) {
           if (item == S4_LIFT_JOG_SPD) StorageManager::saveDishLiftJogSpeed(systemState.dishLiftJogSpeed);
           else if (item == S4_LIFT_GO_SPD) StorageManager::saveDishLiftGoSpeed(systemState.dishLiftGoSpeed);
           else if (item == S4_LIFT_NUM_MIX) StorageManager::saveDishLiftNumMix(systemState.dishLiftNumMix);
-          else if (item == S4_LIFT_SG_TUNE) StorageManager::saveDishLiftSGThreshold(systemState.dishLiftSGThreshold);
+          else if (item == S4_LIFT_SG_TUNE) {
+            StorageManager::saveDishLiftSGThreshold(systemState.dishLiftSGThreshold);
+            g_dishLiftNode.setSGThreshold(systemState.dishLiftSGThreshold);
+          }
         }
         LCD_setMessage("Saved");
       } else {

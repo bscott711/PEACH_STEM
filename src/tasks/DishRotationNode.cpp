@@ -5,16 +5,16 @@
 
 static void savePos(float pos) { StorageManager::saveDishRotationPosition(pos); }
 static float loadPos() { return StorageManager::loadDishRotationPosition(); }
-static int getSG() { return systemState.dishRotationSGThreshold; }
 
 DishRotationNode::DishRotationNode() : StepperAxisNode({
-    "ROT_NODE",
+    "ROTATION_NODE",
     &Serial1,
     TMC2209::SERIAL_ADDRESS_2,
     -1, -1, -1,
     false, // NO limits (continuous rotation)
-    savePos, loadPos, nullptr, nullptr, nullptr, getSG,
-    0.715f // Rotation velocity multiplier
+    savePos, loadPos, nullptr, nullptr, nullptr,
+    StorageManager::loadDishRotationSGThreshold(100), // initial SG
+    ROT_VEL_MULT // Rotation velocity multiplier
 }) {}
 
 DishRotationNode::~DishRotationNode() {}
@@ -24,11 +24,20 @@ bool DishRotationNode::checkInterlock(int desiredSpeed) {
     if (desiredSpeed != 0) {
         AxisTelemetry liftTel;
         if (dishLiftTelQueue != NULL && xQueuePeek(dishLiftTelQueue, &liftTel, 0) == pdPASS) {
+            uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+            if ((now - liftTel.timestamp) > 500) {
+                LCD_setMessage("Rot Blocked: Timeout");
+                return true;
+            }
+
             // Check if lift is not in Home position (posA)
             if (!liftTel.posASet || std::abs(liftTel.currentPosition - liftTel.posA) > 5.0f) {
                 LCD_setMessage("Rot Blocked: Lift!");
                 return true;
             }
+        } else {
+            LCD_setMessage("Rot Blocked: No Tel");
+            return true;
         }
     }
     return false;
