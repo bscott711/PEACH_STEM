@@ -38,12 +38,12 @@ extern SemaphoreHandle_t tmcUartMutex;
 extern EventGroupHandle_t controlEvents;
 
 // Queue handles declared in controller.cpp, extern here for access
-extern QueueHandle_t armCmdQueue;
-extern QueueHandle_t armTelQueue;
-extern QueueHandle_t actuatorCmdQueue;
-extern QueueHandle_t actuatorTelQueue;
-extern QueueHandle_t motorCmdQueue;
-extern QueueHandle_t motorTelQueue;
+extern QueueHandle_t scraperArmCmdQueue;
+extern QueueHandle_t scraperArmTelQueue;
+extern QueueHandle_t dishRotationCmdQueue;
+extern QueueHandle_t dishRotationTelQueue;
+extern QueueHandle_t dishLiftCmdQueue;
+extern QueueHandle_t dishLiftTelQueue;
 
 // Removed OTA globals from here
 

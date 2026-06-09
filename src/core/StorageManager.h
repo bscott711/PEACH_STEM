@@ -8,35 +8,35 @@ public:
     static void init();
 
     // --- Actuator ---
-    static void saveActuatorLimit(LimitIndex idx, int limit, bool isSet);
-    static void loadActuatorLimits(int limits[3], bool limitSet[3]);
-    static void saveActuatorPosition(float pos);
-    static float loadActuatorPosition();
-    static void saveActuatorJogSpeed(int speed);
-    static int loadActuatorJogSpeed(int defaultSpeed);
-    static void saveActuatorGoSpeed(int speed);
-    static int loadActuatorGoSpeed(int defaultSpeed);
+    static void saveDishRotationLimit(LimitIndex idx, int limit, bool isSet);
+    static void loadDishRotationLimits(int limits[3], bool limitSet[3]);
+    static void saveDishRotationPosition(float pos);
+    static float loadDishRotationPosition();
+    static void saveDishRotationJogSpeed(int speed);
+    static int loadDishRotationJogSpeed(int defaultSpeed);
+    static void saveDishRotationGoSpeed(int speed);
+    static int loadDishRotationGoSpeed(int defaultSpeed);
 
     // --- Motor ---
-    static void saveMotorLimit(LimitIndex idx, float limit, bool isSet);
-    static void loadMotorLimits(float limits[3], bool limitSet[3]);
-    static void saveMotorState(bool isHomed, float pos);
-    static void loadMotorState(bool &isHomed, float &pos);
-    static void saveZJogSpeed(int speed);
-    static int loadZJogSpeed(int defaultSpeed);
-    static void saveZGoSpeed(int speed);
-    static int loadZGoSpeed(int defaultSpeed);
+    static void saveDishLiftLimit(LimitIndex idx, float limit, bool isSet);
+    static void loadDishLiftLimits(float limits[3], bool limitSet[3]);
+    static void saveDishLiftState(bool isHomed, float pos);
+    static void loadDishLiftState(bool &isHomed, float &pos);
+    static void saveDishLiftJogSpeed(int speed);
+    static int loadDishLiftJogSpeed(int defaultSpeed);
+    static void saveDishLiftGoSpeed(int speed);
+    static int loadDishLiftGoSpeed(int defaultSpeed);
 
     // --- Arm ---
-    static void saveArmPosOut(int pos);
-    static void saveArmPosIn(int pos);
-    static void loadArmCalibration(int &posOut, int &posIn);
-    static void saveArmPosBuffer(int pos);
-    static int loadArmPosBuffer();
-    static void saveArmPosition(float pos);
-    static float loadArmPosition();
-    static void saveArmJogSpeed(int speed);
-    static int loadArmJogSpeed(int defaultSpeed);
-    static void saveArmGoSpeed(int speed);
-    static int loadArmGoSpeed(int defaultSpeed);
+    static void saveScraperArmPosOut(int pos);
+    static void saveScraperArmPosIn(int pos);
+    static void loadScraperArmCalibration(int &posOut, int &posIn);
+    static void saveScraperArmPosBuffer(int pos);
+    static int loadScraperArmPosBuffer();
+    static void saveScraperArmPosition(float pos);
+    static float loadScraperArmPosition();
+    static void saveScraperArmJogSpeed(int speed);
+    static int loadScraperArmJogSpeed(int defaultSpeed);
+    static void saveScraperArmGoSpeed(int speed);
+    static int loadScraperArmGoSpeed(int defaultSpeed);
 };

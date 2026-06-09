@@ -1,9 +1,9 @@
 #include "core/SequenceEngine.h"
 #include "controller.h"
 #include "messaging.h"
-#include "tasks/MotorNode.h"
-#include "tasks/ActuatorNode.h"
-#include "tasks/ArmNode.h"
+#include "tasks/DishLiftNode.h"
+#include "tasks/DishRotationNode.h"
+#include "tasks/ScraperArmNode.h"
 #include "drivers/LCDDriver.h"
 #include "drivers/EncoderDriver.h"
 #include "esp_log.h"
@@ -11,14 +11,14 @@
 #include <cmath>
 #include <cstdint>
 
-extern ArmNode g_armNode;
-extern ActuatorNode g_actuatorNode;
-extern MotorNode g_motorNode;
+extern ScraperArmNode g_scraperArmNode;
+extern DishRotationNode g_dishRotationNode;
+extern DishLiftNode g_dishLiftNode;
 
 void autonomous_task(void *pvParameters) {
   uint8_t slowSpeed = 128;
   if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      slowSpeed = systemState.actGoSpeed;
+      slowSpeed = systemState.dishRotationGoSpeed;
       xSemaphoreGive(systemStateMutex);
   }
 
@@ -26,29 +26,29 @@ void autonomous_task(void *pvParameters) {
 
   // Define the normal autonomous sequence steps
   const SequenceStep sequence_normal[] = {
-      {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z"},
-      {SEQ_MOVE_ARM, 100, 0, 0, "Auto: Arm Tip"},
-      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Act Mid"},
-      {SEQ_MOVE_Z, 0, 1, 0, "Auto: Lower Z Mid"},
-      {SEQ_MOVE_ACTUATOR, 0, 0, 255, "Auto: Mix 1 Bot"},
-      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix 1 Mid"},
-      {SEQ_MOVE_ACTUATOR, 0, 0, 255, "Auto: Mix 2 Bot"},
-      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix 2 Mid"},
-      {SEQ_MOVE_ACTUATOR, 0, 0, 255, "Auto: Mix 3 Bot"},
-      {SEQ_MOVE_ACTUATOR, 1, 0, 255, "Auto: Mix 3 Mid"},
-      {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z"},
-      {SEQ_MOVE_ARM, 200, 0, 0, "Auto: Arm Buffer"},
-      {SEQ_MOVE_ARM_AND_Z, 0, 0, 0, "Auto: Clr & Lwr Z"},
-      {SEQ_MOVE_ACTUATOR, 0, 0, 165, "Auto: Dispense"},
+      {SEQ_MOVE_LIFT, 0, 2, 0, "Auto: Raise Z"},
+      {SEQ_MOVE_SCRAPER, 100, 0, 0, "Auto: Arm Tip"},
+      {SEQ_MOVE_ROTATION, 1, 0, 255, "Auto: Act Mid"},
+      {SEQ_MOVE_LIFT, 0, 1, 0, "Auto: Lower Z Mid"},
+      {SEQ_MOVE_ROTATION, 0, 0, 255, "Auto: Mix 1 Bot"},
+      {SEQ_MOVE_ROTATION, 1, 0, 255, "Auto: Mix 1 Mid"},
+      {SEQ_MOVE_ROTATION, 0, 0, 255, "Auto: Mix 2 Bot"},
+      {SEQ_MOVE_ROTATION, 1, 0, 255, "Auto: Mix 2 Mid"},
+      {SEQ_MOVE_ROTATION, 0, 0, 255, "Auto: Mix 3 Bot"},
+      {SEQ_MOVE_ROTATION, 1, 0, 255, "Auto: Mix 3 Mid"},
+      {SEQ_MOVE_LIFT, 0, 2, 0, "Auto: Raise Z"},
+      {SEQ_MOVE_SCRAPER, 200, 0, 0, "Auto: Arm Buffer"},
+      {SEQ_MOVE_SCRAPER_AND_Z, 0, 0, 0, "Auto: Clr & Lwr Z"},
+      {SEQ_MOVE_ROTATION, 0, 0, 165, "Auto: Dispense"},
       {SEQ_WAIT_MS, 2000, 0, 0, "Auto: Pause"},
-      {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z"},
-      {SEQ_MOVE_ACTUATOR, 2, 0, 255, "Auto: Done"}
+      {SEQ_MOVE_LIFT, 0, 2, 0, "Auto: Raise Z"},
+      {SEQ_MOVE_ROTATION, 2, 0, 255, "Auto: Done"}
   };
 
   // Define the shutdown sequence
   const SequenceStep sequence_shutdown[] = {
-      {SEQ_MOVE_Z, 0, 2, 0, "Auto: Raise Z"},
-      {SEQ_MOVE_ARM, 0, 0, 0, "Auto: Arm Clear"}
+      {SEQ_MOVE_LIFT, 0, 2, 0, "Auto: Raise Z"},
+      {SEQ_MOVE_SCRAPER, 0, 0, 0, "Auto: Arm Clear"}
   };
 
   const SequenceStep* sequence = (seqType == 1) ? sequence_shutdown : sequence_normal;
@@ -81,11 +81,11 @@ void autonomous_task(void *pvParameters) {
       }
 
       switch (step.action) {
-      case SEQ_MOVE_Z: {
-        MotorTelemetry motorTel;
+      case SEQ_MOVE_LIFT: {
+        DishLiftTelemetry motorTel;
         float currentPos = 0;
         float targetZ = 0;
-        if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+        if (xQueuePeek(dishLiftTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
           currentPos = motorTel.currentPosition;
           targetZ = motorTel.limits[step.limitIdx];
         }
@@ -100,10 +100,10 @@ void autonomous_task(void *pvParameters) {
         } else {
             int goSpeed = 5000;
             if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                goSpeed = systemState.zGoSpeed;
+                goSpeed = systemState.dishLiftGoSpeed;
                 xSemaphoreGive(systemStateMutex);
             }
-            g_motorNode.setTarget(targetZ, goSpeed);
+            g_dishLiftNode.setTarget(targetZ, goSpeed);
         }
 
         if (!posReached) {
@@ -129,14 +129,14 @@ void autonomous_task(void *pvParameters) {
             }
         }
 
-        g_motorNode.setSpeed(0);
+        g_dishLiftNode.setSpeed(0);
         stepComplete = true;
         break;
       }
 
-      case SEQ_MOVE_ARM: {
-        ArmTelemetry armTel;
-        if (xQueuePeek(armTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
+      case SEQ_MOVE_SCRAPER: {
+        ScraperArmTelemetry armTel;
+        if (xQueuePeek(scraperArmTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
           int outSteps = armTel.posOut;
           int inSteps = armTel.posIn;
           int bufferSteps = armTel.posBuffer;
@@ -154,10 +154,10 @@ void autonomous_task(void *pvParameters) {
             } else {
               int goSpeed = 5000;
               if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                  goSpeed = systemState.armGoSpeed;
+                  goSpeed = systemState.scraperArmGoSpeed;
                   xSemaphoreGive(systemStateMutex);
               }
-              g_armNode.setTarget(step.target == SEQ_TARGET_BUFFER ? 200.0f : (float)step.target, goSpeed);
+              g_scraperArmNode.setTarget(step.target == SEQ_TARGET_BUFFER ? 200.0f : (float)step.target, goSpeed);
             }
             
             if (!posReached) {
@@ -190,15 +190,15 @@ void autonomous_task(void *pvParameters) {
         break;
       }
       
-      case SEQ_MOVE_ARM_AND_Z: {
+      case SEQ_MOVE_SCRAPER_AND_Z: {
         bool zReached = false;
         bool armReached = false;
         
         // --- Z Logic ---
-        MotorTelemetry motorTel;
+        DishLiftTelemetry motorTel;
         float currentZPos = 0;
         float targetZ = 0;
-        if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+        if (xQueuePeek(dishLiftTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
           currentZPos = motorTel.currentPosition;
           targetZ = motorTel.limits[step.limitIdx];
         }
@@ -206,19 +206,19 @@ void autonomous_task(void *pvParameters) {
         
         if (std::abs(targetZ - currentZPos) <= 0.1f) {
             zReached = true;
-            g_motorNode.setSpeed(0);
+            g_dishLiftNode.setSpeed(0);
         } else {
             int goSpeed = 5000;
             if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                goSpeed = systemState.zGoSpeed;
+                goSpeed = systemState.dishLiftGoSpeed;
                 xSemaphoreGive(systemStateMutex);
             }
-            g_motorNode.setTarget(targetZ, goSpeed);
+            g_dishLiftNode.setTarget(targetZ, goSpeed);
         }
 
         // --- Arm Logic ---
-        ArmTelemetry armTel;
-        if (xQueuePeek(armTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
+        ScraperArmTelemetry armTel;
+        if (xQueuePeek(scraperArmTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
           int outSteps = armTel.posOut;
           int inSteps = armTel.posIn;
           int bufferSteps = armTel.posBuffer;
@@ -234,10 +234,10 @@ void autonomous_task(void *pvParameters) {
             } else {
               int goSpeed = 5000;
               if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                  goSpeed = systemState.armGoSpeed;
+                  goSpeed = systemState.scraperArmGoSpeed;
                   xSemaphoreGive(systemStateMutex);
               }
-              g_armNode.setTarget(step.target == SEQ_TARGET_BUFFER ? 200.0f : (float)step.target, goSpeed);
+              g_scraperArmNode.setTarget(step.target == SEQ_TARGET_BUFFER ? 200.0f : (float)step.target, goSpeed);
             }
           } else {
             armReached = true; // Skip if uncalibrated
@@ -277,17 +277,17 @@ void autonomous_task(void *pvParameters) {
         break;
       }
 
-      case SEQ_MOVE_ACTUATOR: {
-        ActuatorTelemetry actTel;
+      case SEQ_MOVE_ROTATION: {
+        DishRotationTelemetry actTel;
         int targetPct = 0;
-        if (xQueuePeek(actuatorTelQueue, &actTel, pdMS_TO_TICKS(10)) == pdPASS) {
+        if (xQueuePeek(dishRotationTelQueue, &actTel, pdMS_TO_TICKS(10)) == pdPASS) {
           targetPct = actTel.limits[step.target];
         }
         
         int speed = step.actuatorSpeed;
         if (speed == 255) { // Use configured speed if max speed is requested
             if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                speed = systemState.actGoSpeed;
+                speed = systemState.dishRotationGoSpeed;
                 xSemaphoreGive(systemStateMutex);
             }
         }
@@ -297,7 +297,7 @@ void autonomous_task(void *pvParameters) {
           posReached = true;
         }
         
-        g_actuatorNode.setTarget(targetPct, speed);
+        g_dishRotationNode.setTarget(targetPct, speed);
         
         if (!posReached) {
             xEventGroupClearBits(controlEvents, BIT_POS_REACHED_ACT);
@@ -371,8 +371,8 @@ void autonomous_task(void *pvParameters) {
   // ---- Cleanup ----
   if (aborted) {
     // E-STOP: halt everything immediately
-    g_motorNode.setSpeed(0);
-    g_actuatorNode.setTarget(0);
+    g_dishLiftNode.setSpeed(0);
+    g_dishRotationNode.setTarget(0);
     LCD_setMessage("Auto: E-STOPPED");
     printf("!!! Autonomous Sequence E-STOPPED !!!\n");
     xEventGroupClearBits(controlEvents, BIT_ESTOP_REQUEST);
@@ -391,8 +391,8 @@ void motor_goto_task(void *pvParameters) {
   float targetZ = 0.0f;
 
   // Read motor limits from telemetry
-  MotorTelemetry motorTel;
-  if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+  DishLiftTelemetry motorTel;
+  if (xQueuePeek(dishLiftTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
     targetZ = motorTel.limits[limitIdx];
   }
 
@@ -400,17 +400,17 @@ void motor_goto_task(void *pvParameters) {
   printf("Starting GOTO target %.2f...\n", targetZ);
 
   float currentPos = 0.0f;
-  if (xQueuePeek(motorTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
+  if (xQueuePeek(dishLiftTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
     currentPos = motorTel.currentPosition;
   }
 
   int autoSpeed = 5000;
   if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    autoSpeed = systemState.zGoSpeed;
+    autoSpeed = systemState.dishLiftGoSpeed;
     xSemaphoreGive(systemStateMutex);
   }
 
-  g_motorNode.setTarget(targetZ, autoSpeed);
+  g_dishLiftNode.setTarget(targetZ, autoSpeed);
 
   xEventGroupClearBits(controlEvents, BIT_POS_REACHED_Z);
   bool aborted = false;
@@ -433,7 +433,7 @@ void motor_goto_task(void *pvParameters) {
     break;
   }
 
-  g_motorNode.setSpeed(0);
+  g_dishLiftNode.setSpeed(0);
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     g_encoderState.position[2] = 0;

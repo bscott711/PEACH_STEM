@@ -12,7 +12,7 @@
  * Supports encoder jog (proportional speed), long-press calibration,
  * and NVS-persisted positions.
  */
-class ArmNode : public ActiveMotionNode<ArmCommand, ArmTelemetry> {
+class ScraperArmNode : public ActiveMotionNode<ScraperArmCommand, ScraperArmTelemetry> {
 private:
     motorDriver driver;
     
@@ -32,13 +32,13 @@ private:
     
     
 public:
-    ArmNode();
-    virtual ~ArmNode();
+    ScraperArmNode();
+    virtual ~ScraperArmNode();
     
     void hwInit() override;
-    void processCommand(const ArmCommand& cmd) override;
+    void processCommand(const ScraperArmCommand& cmd) override;
     void hwUpdate() override;
-    ArmTelemetry generateTelemetry() override;
+    ScraperArmTelemetry generateTelemetry() override;
     
     bool setSpeed(int speed);
     bool stop();

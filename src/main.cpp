@@ -1,10 +1,10 @@
 #include "controller.h"
 #include "drivers/EncoderDriver.h"
 #include "messaging.h"
-#include "tasks/ActuatorNode.h"
+#include "tasks/DishRotationNode.h"
 #include "tasks/LCD_task.h"
-#include "tasks/MotorNode.h"
-#include "tasks/ArmNode.h"
+#include "tasks/DishLiftNode.h"
+#include "tasks/ScraperArmNode.h"
 #include "tasks/encoder_task.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
@@ -14,9 +14,9 @@
 #include "core/NetworkManager.h"
 
 // Global Node instances (extern in controller.cpp)
-ArmNode g_armNode;
-ActuatorNode g_actuatorNode;
-MotorNode g_motorNode;
+ScraperArmNode g_scraperArmNode;
+DishRotationNode g_dishRotationNode;
+DishLiftNode g_dishLiftNode;
 
 // Removed initWiFiAndOTA
 
@@ -49,20 +49,20 @@ void setup() {
   vTaskPrioritySet(NULL, 5);
 
   // 1. Start Active Motion Nodes
-  if (!g_motorNode.start("MotorNode", 4096, 2))
-    PEACH_LOGE("MAIN", "Failed MotorNode");
-  if (!g_actuatorNode.start("ActuatorNode", 4096, 2))
-    PEACH_LOGE("MAIN", "Failed ActuatorNode");
-  if (!g_armNode.start("ArmNode", 4096, 2))
-    PEACH_LOGE("MAIN", "Failed ArmNode");
+  if (!g_dishLiftNode.start("DishLiftNode", 4096, 2))
+    PEACH_LOGE("MAIN", "Failed DishLiftNode");
+  if (!g_dishRotationNode.start("DishRotationNode", 4096, 2))
+    PEACH_LOGE("MAIN", "Failed DishRotationNode");
+  if (!g_scraperArmNode.start("ScraperArmNode", 4096, 2))
+    PEACH_LOGE("MAIN", "Failed ScraperArmNode");
 
   // 2. Link the global messaging queues
-  armCmdQueue = g_armNode.getCmdQueue();
-  armTelQueue = g_armNode.getTelQueue();
-  actuatorCmdQueue = g_actuatorNode.getCmdQueue();
-  actuatorTelQueue = g_actuatorNode.getTelQueue();
-  motorCmdQueue = g_motorNode.getCmdQueue();
-  motorTelQueue = g_motorNode.getTelQueue();
+  scraperArmCmdQueue = g_scraperArmNode.getCmdQueue();
+  scraperArmTelQueue = g_scraperArmNode.getTelQueue();
+  dishRotationCmdQueue = g_dishRotationNode.getCmdQueue();
+  dishRotationTelQueue = g_dishRotationNode.getTelQueue();
+  dishLiftCmdQueue = g_dishLiftNode.getCmdQueue();
+  dishLiftTelQueue = g_dishLiftNode.getTelQueue();
   lcdDataQueue = xQueueCreate(1, sizeof(UIData));
 
   // 3. Create Dependent Tasks

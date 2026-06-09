@@ -6,23 +6,23 @@ struct UIData {
     DeviceMode currentMode;
     
     // S1 Arm — jog direction + position
-    int armJogDir;        // -1, 0, +1
-    float armPosition;    // Current absolute step position
-    int armPosOut;        // Calibration: Out position (-1 = unset)
-    int armPosBuffer;     // Calibration: Buffer position (-1 = unset)
-    int armPosIn;         // Calibration: In position (-1 = unset)
+    int scraperArmJogDir;        // -1, 0, +1
+    float scraperArmPosition;    // Current absolute step position
+    int scraperArmPosOut;        // Calibration: Out position (-1 = unset)
+    int scraperArmPosBuffer;     // Calibration: Buffer position (-1 = unset)
+    int scraperArmPosIn;         // Calibration: In position (-1 = unset)
 
     // S2 Actuator — jog direction + position
-    int actJogDir;        // -1, 0, +1
-    int actuatorPercent;  // Current position percent
-    int actuatorLimits[3];
-    bool actuatorLimitSet[3];
+    int dishRotationJogDir;        // -1, 0, +1
+    int dishRotationPercent;  // Current position percent
+    int dishRotationLimits[3];
+    bool dishRotationLimitSet[3];
 
     // S3 Z Motor — jog direction + position
-    int zJogDir;          // -1, 0, +1
-    float motorPos;
-    float motorLimits[3];
-    bool motorLimitSet[3];
+    int dishLiftJogDir;          // -1, 0, +1
+    float dishLiftPos;
+    float dishLiftLimits[3];
+    bool dishLiftLimitSet[3];
 
     // S4 Menu state
     S4Level0 s4Menu;
@@ -31,10 +31,10 @@ struct UIData {
     bool s4InSpeedEdit;
 
     // Configurable Speeds
-    int armJogSpeed;
-    int armGoSpeed;
-    int actJogSpeed;
-    int actGoSpeed;
-    int zJogSpeed;
-    int zGoSpeed;
+    int scraperArmJogSpeed;
+    int scraperArmGoSpeed;
+    int dishRotationJogSpeed;
+    int dishRotationGoSpeed;
+    int dishLiftJogSpeed;
+    int dishLiftGoSpeed;
 };

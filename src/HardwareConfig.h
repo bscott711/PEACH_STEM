@@ -11,10 +11,15 @@
 // ==========================================
 // I2C Bus (Rotary Encoders / I2C Peripherals)
 // ==========================================
-#define I2C_SDA_PIN 26
-#define I2C_SCL_PIN 27
-#define ENCODER_INT_PIN 25
+#define I2C_SCL_PIN 13
+#define I2C_SDA_PIN 14
+#define ENCODER_INT_PIN 27
 #define ENCODER_I2C_ADDR 0x49
+
+// StallGuard DIAG Pins
+#define SG_DIAG1 26
+#define SG_DIAG2 25
+#define SG_DIAG3 33
 
 // Seesaw GPIO pins for encoder buttons (from Adafruit datasheet)
 #define SEESAW_BTN_ENC0 12
@@ -27,7 +32,7 @@
 // ==========================================
 #define LCD_SCK     18
 #define LCD_MOSI    23
-#define LCD_CS      5
+#define LCD_CS      19
 #define LCD_DC      21
 #define LCD_RESET   22
 
@@ -42,8 +47,8 @@
 
 // Serial1 mapped to RX2/TX2 pins on standard WROOM ESP32
 // Swapped in software to handle straight-through wiring (Driver TX -> ESP TX2, Driver RX -> ESP RX2)
-#define TXD1 16 // ESP Transmits on physical RX2 pin
-#define RXD1 17 // ESP Receives on physical TX2 pin 
+#define TXD1 17 // ESP Transmits on physical TX2 pin
+#define RXD1 16 // ESP Receives on physical RX2 pin 
 
 // ==========================================
 // Z-Axis Optical Endstops
@@ -54,13 +59,5 @@
 #define BOT_ENDSTOP_PIN 34 // Input Only Pin
 
 // ==========================================
-// Linear Actuator (DRV8871 H-Bridge)
+// H-Bridge removed, utilizing 3 Stepper Motors
 // ==========================================
-#define HB_IN1 33
-#define HB_IN2 32
-// PWM Channels for ledc
-#define HB_PWM_CH_IN1 1
-#define HB_PWM_CH_IN2 2
-#define HB_PWM_FREQ 30000
-#define HB_PWM_RES 8
-

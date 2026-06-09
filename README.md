@@ -1,40 +1,39 @@
-# PEACH PIT - Robotic Cell Dropper
+# PEACH STEM - Suspension and Transfer of Exfoliated Macrophages
 
-![PEACH PIT Header](HEADER.png)
+![PEACH STEM Header](HEADER.png)
 
 An ESP32-based embedded control system for automated laboratory cell handling with precision motion control.
 
 ## Overview
 
-PEACH_PIT is a multi-axis robotic control system designed for pick-and-drop operations in laboratory environments. Built on the ESP32 platform with FreeRTOS, it provides deterministic real-time control of stepper motors, servos, and linear actuators.
+PEACH_STEM is a multi-axis robotic control system designed for pick-and-drop operations in laboratory environments. Built on the ESP32 platform with FreeRTOS, it provides deterministic real-time control of 3 stepper motors.
 
-**Current Branch Status**: v3.0 - Fully refactored to an Active Object architecture with lock-free queues, dynamic NVS limit mapping for autonomous sequences, and adjustable UI speeds.
+**Current Branch Status**: v1.0 - Fully refactored to an Active Object architecture with lock-free queues, dynamic NVS limit mapping for autonomous sequences, and adjustable UI speeds.
 
 ## Features
 
-- **Multi-task FreeRTOS Architecture**: Concurrent task management for motor control, encoder reading, LCD display, servo positioning, and actuator control.
+- **Multi-task FreeRTOS Architecture**: Concurrent task management for motor control, encoder reading, and LCD display.
 - **Dynamic Sequence Engine**: Interruptible step-based autonomous operation with E-STOP support and dynamic NVS limit lookups.
 - **Precision Motion Control**:
-  - Z-Axis Stepper motor with TMC2209 driver and optional optical endstops.
-  - Servo motor (Arm) with NVS-persisted 3-point calibration targets (Clear, Buffer, Tip).
-  - Linear actuator with DRV8871 H-Bridge driver, position tracking, and adjustable PWM speeds.
+  - **Stepper 0**: Rotates the dish.
+  - **Stepper 1**: Lowers and raises the scraper arm.
+  - **Stepper 2**: Raises and lowers the petri dish.
+  - All axes use TMC2209 stepper motor drivers. Stall Guard support will be added.
 - **Real-time Feedback**: Adafruit Seesaw I2C Quadrature encoder integration for closed-loop position control and UI manipulation.
 - **User Interface**: SPI OLED LCD display (U8g2) for status monitoring, limit setting, and speed adjustments.
 - **Safety Features**:
   - Emergency stop (E-STOP) with immediate sequence interruption.
-  - Interlocks preventing Z-axis collisions while the Arm is swung out.
   - Hardware optical endstop overrides.
-- **State Persistence**: Non-volatile storage (NVS) for physical limits (Z, Actuator, and Arm) and custom sequence speeds (Jog/Go for all axes).
+- **State Persistence**: Non-volatile storage (NVS) for physical limits and custom sequence speeds (Jog/Go for all axes).
 
 ## Hardware Requirements
 
 - **Microcontroller**: ESP32 DevKit
 - **Motor Drivers**:
-  - TMC2209 stepper motor driver (UART configurable)
-  - DRV8871 H-Bridge (Linear Actuator)
+  - 3x TMC2209 stepper motor drivers (UART configurable, Stall Guard ready)
 - **Display**: SPI OLED LCD
 - **Encoder**: Adafruit I2C Quadrature rotary encoder (4 encoders)
-- **Sensors**: Optical Endstops for Z-axis
+- **Sensors**: Optical Endstops
 
 ## Installation
 
@@ -74,7 +73,7 @@ pio device monitor
 ## Project Structure
 
 ```bash
-PEACH_PIT/
+PEACH_STEM/
 ├── src/
 │   ├── main.cpp              # Entry point and FreeRTOS task initialization
 │   ├── messaging.h           # System-wide structs and lock-free queue definitions
@@ -86,9 +85,7 @@ PEACH_PIT/
 │   │   └── SystemState.h     # Global UI state enum and sequence definitions
 │   ├── tasks/                # FreeRTOS task implementations (Active Objects)
 │   │   ├── ActiveMotionNode.h # Base template for all motion nodes
-│   │   ├── ActuatorNode.*    # Linear actuator control loop
-│   │   ├── ArmNode.*         # Servo motor arm control loop
-│   │   └── MotorNode.*       # Stepper motor Z-axis control loop
+│   │   └── MotorNode.*       # Stepper motor control loops
 │   └── drivers/              # Hardware abstraction layer
 │       ├── EncoderDriver.*   # Quadrature encoder interface
 │       └── LCDDriver.*       # OLED display driver
@@ -105,8 +102,8 @@ PEACH_PIT/
 
 The UI is driven by an encoder with short-press, long-press, and double-press actions:
 
-- **Level 0 (Main Menu)**: Select between Shutdown, Arm, Actuator, Z Motor, and Auto.
-- **Level 1 (Sub-Menu)**: Set limits (Top/Mid/Bot or Tip/Buf/Clr), adjust Jog/Go speeds, or clear calibration.
+- **Level 0 (Main Menu)**: Select between Shutdown, Stepper 0, Stepper 1, Stepper 2, and Auto.
+- **Level 1 (Sub-Menu)**: Set limits (Top/Mid/Bot), adjust Jog/Go speeds, or clear calibration.
 
 ### Sequence Engine
 
@@ -114,12 +111,12 @@ The autonomous sequence engine uses a step-based approach defined in `SystemStat
 
 ```cpp
 enum SequenceAction {
-  SEQ_MOVE_Z,        // Move Z-axis to target limit index (0=Bot, 1=Mid, 2=Top)
-  SEQ_MOVE_ARM,      // Move Arm target percent
-  SEQ_MOVE_ACTUATOR, // Set actuator to target limit index (0,1,2) with custom speed
-  SEQ_WAIT_MS,       // Interruptible delay
-  SEQ_WAIT_USER,     // Wait for user button press
-  SEQ_MOVE_ARM_AND_Z // Move Arm and Z simultaneously
+  SEQ_MOVE_ROTATE,    // Move Stepper 0 (Rotate) to target limit index
+  SEQ_MOVE_SCRAPE,    // Move Stepper 1 (Scrape) to target limit index
+  SEQ_MOVE_TILT,      // Move Stepper 2 (Tilt) to target limit index
+  SEQ_WAIT_MS,        // Interruptible delay
+  SEQ_WAIT_USER,      // Wait for user button press
+  SEQ_MOVE_ALL        // Move multiple steppers simultaneously
 };
 ```
 
@@ -136,16 +133,14 @@ FreeRTOS task priorities (higher number = higher priority):
 
 - **EncoderTask** (3): Critical for position feedback
 - **Controller** (3): Main UI and input control logic
-- **MotorNode** (2): Z-Axis stepper control loop
-- **ActuatorNode** (2): Linear actuator positioning
-- **ArmNode** (2): Servo angle control
+- **MotorNodes** (2): Stepper 0, 1, and 2 control loops
 - **LCD** (2): Display refresh
 
 ## License
 
 MIT License
 
-Copyright (c) 2026 PEACH PIT Contributors
+Copyright (c) 2026 PEACH STEM Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -174,5 +169,5 @@ SOFTWARE.
 - **Architecture Refactor**: Replaced shared-memory `controller` blob with `ActiveMotionNode` architecture. Tasks communicate exclusively via lock-free FreeRTOS queues (`messaging.h`).
 - **Data-Driven Subsystems**: Extracted `StorageManager`, `InputManager`, and `SequenceEngine`.
 - **Dynamic UI Speeds**: Jog and GOTO speeds for all axes are now configurable via the physical Encoder UI and saved to NVS.
-- **Dynamic Limits**: `SequenceEngine` now dynamically looks up calibrated physical positions for the Z-Axis and Actuator at runtime, eliminating hardcoded depths.
+- **Dynamic Limits**: `SequenceEngine` now dynamically looks up calibrated physical positions for the steppers at runtime, eliminating hardcoded depths.
 - **Hardware Abstraction**: Centralized pin definitions to `HardwareConfig.h`.

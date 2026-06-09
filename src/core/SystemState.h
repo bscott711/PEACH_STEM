@@ -6,16 +6,16 @@ enum DeviceMode { IDLE, PICKUP_CELL, DROPOFF_CELL };
 enum ActuatorDirection { ACT_STOP = 0, ACT_FORWARD, ACT_REVERSE };
 
 // --- S4 Hierarchical Menu ---
-enum S4Level0 { S4_STOP, S4_ARM, S4_ACT, S4_Z, S4_AUTO, S4_LEVEL0_COUNT };
+enum S4Level0 { S4_STOP, S4_SCRAPER, S4_ROTATION, S4_LIFT, S4_AUTO, S4_LEVEL0_COUNT };
 
 // Sub-menu indices for Arm
-#define S4_ARM_TIP     0
-#define S4_ARM_BUFFER  1
-#define S4_ARM_CLEAR   2
-#define S4_ARM_JOG_SPD 3
-#define S4_ARM_GO_SPD  4
-#define S4_ARM_BACK    5
-#define S4_ARM_COUNT   6
+#define S4_SCRAPER_TIP     0
+#define S4_SCRAPER_BUFFER  1
+#define S4_SCRAPER_CLEAR   2
+#define S4_SCRAPER_JOG_SPD 3
+#define S4_SCRAPER_GO_SPD  4
+#define S4_SCRAPER_BACK    5
+#define S4_SCRAPER_COUNT   6
 
 // Sub-menu indices for Actuator & Z (same layout)
 #define S4_POS_TOP     0
@@ -31,19 +31,19 @@ enum S4Level0 { S4_STOP, S4_ARM, S4_ACT, S4_Z, S4_AUTO, S4_LEVEL0_COUNT };
 
 // --- Sequence Engine Types ---
 enum SequenceAction {
-  SEQ_MOVE_Z,        // Move Z-axis to target position (deterministic)
-  SEQ_MOVE_ARM,      // Move Arm
-  SEQ_MOVE_ACTUATOR, // Set actuator to target percent
+  SEQ_MOVE_LIFT,        // Move Z-axis to target position (deterministic)
+  SEQ_MOVE_SCRAPER,      // Move Arm
+  SEQ_MOVE_ROTATION, // Set actuator to target percent
   SEQ_WAIT_MS,       // Interruptible delay (target = milliseconds)
   SEQ_WAIT_USER,     // Wait for user button press to continue
-  SEQ_MOVE_ARM_AND_Z // Move Arm to target percent and Z to limitIdx simultaneously
+  SEQ_MOVE_SCRAPER_AND_Z // Move Arm to target percent and Z to limitIdx simultaneously
 };
 
 struct SequenceStep {
   SequenceAction action;
   int target;          // Position/percent/ms/limitIndex depending on action
-  int limitIdx;        // Z-position limit index (0=Bot, 1=Mid, 2=Top) (only for SEQ_MOVE_Z)
-  int actuatorSpeed;   // Actuator PWM speed (0-255) (only for SEQ_MOVE_ACTUATOR)
+  int limitIdx;        // Z-position limit index (0=Bot, 1=Mid, 2=Top) (only for SEQ_MOVE_LIFT)
+  int actuatorSpeed;   // Actuator PWM speed (0-255) (only for SEQ_MOVE_ROTATION)
   const char *message; // LCD message (NULL = no update)
 };
 
@@ -58,12 +58,12 @@ struct SystemState {
   bool s4InSpeedEdit;
 
   // Configurable Speeds
-  int armJogSpeed;
-  int armGoSpeed;
-  int actJogSpeed; // PWM 0-255
-  int actGoSpeed;  // PWM 0-255
-  int zJogSpeed;
-  int zGoSpeed;
+  int scraperArmJogSpeed;
+  int scraperArmGoSpeed;
+  int dishRotationJogSpeed; // PWM 0-255
+  int dishRotationGoSpeed;  // PWM 0-255
+  int dishLiftJogSpeed;
+  int dishLiftGoSpeed;
   
   // Collision Detection (shared flag)
   bool collisionDetected;

@@ -103,21 +103,21 @@ void NetworkManager::init() {
       Serial.println("Start updating " + type);
       
       // Safety Interlocks
-      if (motorCmdQueue != NULL) {
-        MotorCommand stopMotor = { MotorCmdAction::SET_SPEED, 0.0f };
-        xQueueSend(motorCmdQueue, &stopMotor, 0);
+      if (dishLiftCmdQueue != NULL) {
+        DishLiftCommand stopMotor = { DishLiftCmdAction::SET_SPEED, 0.0f };
+        xQueueSend(dishLiftCmdQueue, &stopMotor, 0);
       }
-      if (actuatorCmdQueue != NULL) {
-        ActuatorCommand stopAct = { ActuatorCmdAction::SET_TARGET, 0 };
-        ActuatorTelemetry actTel;
-        if (actuatorTelQueue != NULL && xQueuePeek(actuatorTelQueue, &actTel, 0) == pdPASS) {
+      if (dishRotationCmdQueue != NULL) {
+        DishRotationCommand stopAct = { DishRotationCmdAction::SET_TARGET, 0 };
+        DishRotationTelemetry actTel;
+        if (dishRotationTelQueue != NULL && xQueuePeek(dishRotationTelQueue, &actTel, 0) == pdPASS) {
           stopAct.value = actTel.currentPercent;
         }
-        xQueueSend(actuatorCmdQueue, &stopAct, 0);
+        xQueueSend(dishRotationCmdQueue, &stopAct, 0);
       }
-      if (armCmdQueue != NULL) {
-        ArmCommand stopArm = { ArmCmdAction::SET_SPEED, 0.0f };
-        xQueueSend(armCmdQueue, &stopArm, 0);
+      if (scraperArmCmdQueue != NULL) {
+        ScraperArmCommand stopArm = { ScraperArmCmdAction::SET_SPEED, 0.0f };
+        xQueueSend(scraperArmCmdQueue, &stopArm, 0);
       }
     })
     .onEnd([]() {

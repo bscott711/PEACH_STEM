@@ -1,13 +1,13 @@
-#include "tasks/ArmNode.h"
+#include "tasks/ScraperArmNode.h"
 #include "controller.h"
 #include "drivers/LCDDriver.h"
 #include "core/NetworkManager.h"
 #include <esp_log.h>
 #include <cmath>
 
-static const char* TAG = "ARM_NODE";
+static const char* TAG = "SCRAPER_NODE";
 
-ArmNode::ArmNode()
+ScraperArmNode::ScraperArmNode()
     : currentPosition(0.0f)
     , targetSpeed(0)
     , previousTargetSpeed(0)
@@ -18,19 +18,19 @@ ArmNode::ArmNode()
     , lastSavedPosition(-999.0f) {
 }
 
-ArmNode::~ArmNode() {
+ScraperArmNode::~ScraperArmNode() {
 }
 
-void ArmNode::hwInit() {
+void ScraperArmNode::hwInit() {
     // Initialize TMC2209 driver for Arm on Address 1
     // Note: Serial1 is shared and initialized globally in main.cpp!
     vTaskDelay(pdMS_TO_TICKS(200));
     driver.begin(Serial1, TMC2209::SERIAL_ADDRESS_1);
     
     // Open NVS namespace
-    StorageManager::loadArmCalibration(posOut, posIn);
-    posBuffer = StorageManager::loadArmPosBuffer();
-    float lastPos = StorageManager::loadArmPosition();
+    StorageManager::loadScraperArmCalibration(posOut, posIn);
+    posBuffer = StorageManager::loadScraperArmPosBuffer();
+    float lastPos = StorageManager::loadScraperArmPosition();
     
     // Set stepper to last known position immediately
     currentPosition = lastPos;
@@ -39,15 +39,15 @@ void ArmNode::hwInit() {
     PEACH_LOGI(TAG, "Loaded calibration: Out=%d, Buf=%d, In=%d, Pos=%.1f", posOut, posBuffer, posIn, lastPos);
 }
 
-void ArmNode::processCommand(const ArmCommand& cmd) {
+void ScraperArmNode::processCommand(const ScraperArmCommand& cmd) {
     switch (cmd.action) {
-        case ArmCmdAction::SET_SPEED:
+        case ScraperArmCmdAction::SET_SPEED:
             targetSpeed = (int)cmd.value;
             isTrackingTarget = false;
             PEACH_LOGD(TAG, "Arm set speed: %d", targetSpeed);
             break;
             
-        case ArmCmdAction::STOP:
+        case ScraperArmCmdAction::STOP:
             targetSpeed = 0;
             // Don't clear isTrackingTarget — if we were tracking, the 
             // P-controller in hwUpdate will resume. STOP is for jog mode only.
@@ -56,7 +56,7 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             }
             break;
             
-        case ArmCmdAction::SET_TARGET:
+        case ScraperArmCmdAction::SET_TARGET:
             if (posOut != -1 && posIn != -1) {
                 if (cmd.value == 200.0f && posBuffer != -1) {
                     targetTrackingAbsSteps = posBuffer;
@@ -72,7 +72,7 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             }
             break;
             
-        case ArmCmdAction::JOG:
+        case ScraperArmCmdAction::JOG:
             if (!isTrackingTarget) {
                 targetTrackingAbsSteps = currentPosition;
                 isTrackingTarget = true;
@@ -80,38 +80,38 @@ void ArmNode::processCommand(const ArmCommand& cmd) {
             targetTrackingAbsSteps += cmd.value;
             break;
             
-        case ArmCmdAction::SET_POS_OUT:
+        case ScraperArmCmdAction::SET_POS_OUT:
             currentPosition = 0.0f;
             posOut = 0;
-            StorageManager::saveArmPosOut(posOut);
+            StorageManager::saveScraperArmPosOut(posOut);
             PEACH_LOGI(TAG, "Arm posOut set to 0 and position zeroed");
             break;
             
-        case ArmCmdAction::SET_POS_BUFFER:
+        case ScraperArmCmdAction::SET_POS_BUFFER:
             posBuffer = (int)currentPosition;
-            StorageManager::saveArmPosBuffer(posBuffer);
+            StorageManager::saveScraperArmPosBuffer(posBuffer);
             PEACH_LOGI(TAG, "Arm posBuffer set to %d", posBuffer);
             break;
             
-        case ArmCmdAction::SET_POS_IN:
+        case ScraperArmCmdAction::SET_POS_IN:
             posIn = (int)currentPosition;
-            StorageManager::saveArmPosIn(posIn);
+            StorageManager::saveScraperArmPosIn(posIn);
             PEACH_LOGI(TAG, "Arm posIn set to %d", posIn);
             break;
             
-        case ArmCmdAction::CLEAR_CAL:
+        case ScraperArmCmdAction::CLEAR_CAL:
             posOut = -1;
             posBuffer = -1;
             posIn = -1;
-            StorageManager::saveArmPosOut(-1);
-            StorageManager::saveArmPosBuffer(-1);
-            StorageManager::saveArmPosIn(-1);
+            StorageManager::saveScraperArmPosOut(-1);
+            StorageManager::saveScraperArmPosBuffer(-1);
+            StorageManager::saveScraperArmPosIn(-1);
             PEACH_LOGI(TAG, "Arm calibration cleared");
             break;
     }
 }
 
-void ArmNode::hwUpdate() {
+void ScraperArmNode::hwUpdate() {
     if (isTrackingTarget) {
         float error = targetTrackingAbsSteps - currentPosition;
         float Kp = 5.0f; // Proportional gain for deceleration ease-out
@@ -147,9 +147,9 @@ void ArmNode::hwUpdate() {
     }
     
     // Read Z motor telemetry for interlock logic
-    MotorTelemetry motorTel;
+    DishLiftTelemetry motorTel;
     bool zAtTop = false;
-    if (motorTelQueue != NULL && xQueuePeek(motorTelQueue, &motorTel, 0) == pdPASS) {
+    if (dishLiftTelQueue != NULL && xQueuePeek(dishLiftTelQueue, &motorTel, 0) == pdPASS) {
         if (motorTel.limitSet[2] && motorTel.currentPosition >= motorTel.limits[2] - 5.0f) {
             zAtTop = true;
         }
@@ -195,7 +195,7 @@ void ArmNode::hwUpdate() {
     // Save position to NVS when stopped and position has changed
     if (targetSpeed == 0 && previousTargetSpeed != 0) {
         if (std::abs(currentPosition - lastSavedPosition) > 0.1f) {
-            StorageManager::saveArmPosition(currentPosition);
+            StorageManager::saveScraperArmPosition(currentPosition);
             lastSavedPosition = currentPosition;
             PEACH_LOGI(TAG, "Saved arm position: %.2f", currentPosition);
         }
@@ -204,8 +204,8 @@ void ArmNode::hwUpdate() {
     previousTargetSpeed = targetSpeed;
 }
 
-ArmTelemetry ArmNode::generateTelemetry() {
-    ArmTelemetry tel;
+ScraperArmTelemetry ScraperArmNode::generateTelemetry() {
+    ScraperArmTelemetry tel;
     tel.currentPosition = currentPosition;
     tel.targetPosition = isTrackingTarget ? targetTrackingAbsSteps : currentPosition;
     tel.posOut = posOut;
@@ -215,59 +215,59 @@ ArmTelemetry ArmNode::generateTelemetry() {
     return tel;
 }
 
-bool ArmNode::setSpeed(int speed) {
-    ArmCommand cmd;
-    cmd.action = ArmCmdAction::SET_SPEED;
+bool ScraperArmNode::setSpeed(int speed) {
+    ScraperArmCommand cmd;
+    cmd.action = ScraperArmCmdAction::SET_SPEED;
     cmd.value = (float)speed;
     return sendCommand(cmd);
 }
 
-bool ArmNode::stop() {
-    ArmCommand cmd;
-    cmd.action = ArmCmdAction::STOP;
+bool ScraperArmNode::stop() {
+    ScraperArmCommand cmd;
+    cmd.action = ScraperArmCmdAction::STOP;
     cmd.value = 0.0f;
     return sendCommand(cmd);
 }
 
-bool ArmNode::jog(float relativeSteps) {
-    ArmCommand cmd;
-    cmd.action = ArmCmdAction::JOG;
+bool ScraperArmNode::jog(float relativeSteps) {
+    ScraperArmCommand cmd;
+    cmd.action = ScraperArmCmdAction::JOG;
     cmd.value = relativeSteps;
     return sendCommand(cmd);
 }
 
-bool ArmNode::setTarget(float percent, int targetSpeed) {
-    ArmCommand cmd;
-    cmd.action = ArmCmdAction::SET_TARGET;
+bool ScraperArmNode::setTarget(float percent, int targetSpeed) {
+    ScraperArmCommand cmd;
+    cmd.action = ScraperArmCmdAction::SET_TARGET;
     cmd.value = percent;
     cmd.targetSpeed = targetSpeed;
     return sendCommand(cmd);
 }
 
-bool ArmNode::setPosOut() {
-    ArmCommand cmd;
-    cmd.action = ArmCmdAction::SET_POS_OUT;
+bool ScraperArmNode::setPosOut() {
+    ScraperArmCommand cmd;
+    cmd.action = ScraperArmCmdAction::SET_POS_OUT;
     cmd.value = 0.0f;
     return sendCommand(cmd);
 }
 
-bool ArmNode::setPosBuffer() {
-    ArmCommand cmd;
-    cmd.action = ArmCmdAction::SET_POS_BUFFER;
+bool ScraperArmNode::setPosBuffer() {
+    ScraperArmCommand cmd;
+    cmd.action = ScraperArmCmdAction::SET_POS_BUFFER;
     cmd.value = 0.0f;
     return sendCommand(cmd);
 }
 
-bool ArmNode::setPosIn() {
-    ArmCommand cmd;
-    cmd.action = ArmCmdAction::SET_POS_IN;
+bool ScraperArmNode::setPosIn() {
+    ScraperArmCommand cmd;
+    cmd.action = ScraperArmCmdAction::SET_POS_IN;
     cmd.value = 0.0f;
     return sendCommand(cmd);
 }
 
-bool ArmNode::clearCal() {
-    ArmCommand cmd;
-    cmd.action = ArmCmdAction::CLEAR_CAL;
+bool ScraperArmNode::clearCal() {
+    ScraperArmCommand cmd;
+    cmd.action = ScraperArmCmdAction::CLEAR_CAL;
     cmd.value = 0.0f;
     return sendCommand(cmd);
 }

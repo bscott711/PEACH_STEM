@@ -1,12 +1,12 @@
-#include "tasks/ActuatorNode.h"
-#include "drivers/HBridgeDriver.h"
+#include "tasks/DishRotationNode.h"
+// HBridgeDriver removed
 #include "controller.h"
 #include "core/NetworkManager.h"
 #include <cmath>
 
-static const char* TAG = "ACTUATOR_NODE";
+static const char* TAG = "ROTATION_NODE";
 
-ActuatorNode::ActuatorNode()
+DishRotationNode::DishRotationNode()
     : currentPercent(0.0f)
     , targetPercent(0)
     , targetSpeedPWM(255)
@@ -16,16 +16,15 @@ ActuatorNode::ActuatorNode()
     limitSet[0] = false; limitSet[1] = false; limitSet[2] = false;
 }
 
-ActuatorNode::~ActuatorNode() {
+DishRotationNode::~DishRotationNode() {
 }
 
-void ActuatorNode::hwInit() {
-    // Initialize H-bridge hardware
-    HBridge_Init();
+void DishRotationNode::hwInit() {
+    // H-bridge hardware removed
     
     // Open NVS namespace for limit and position storage
-    StorageManager::loadActuatorLimits(limits, limitSet);
-    float lastPos = StorageManager::loadActuatorPosition();
+    StorageManager::loadDishRotationLimits(limits, limitSet);
+    float lastPos = StorageManager::loadDishRotationPosition();
     
     currentPercent = lastPos;
     targetPercent = (int)currentPercent;
@@ -38,55 +37,55 @@ void ActuatorNode::hwInit() {
              lastPos);
 }
 
-void ActuatorNode::processCommand(const ActuatorCommand& cmd) {
+void DishRotationNode::processCommand(const DishRotationCommand& cmd) {
     switch (cmd.action) {
-        case ActuatorCmdAction::SET_TARGET:
+        case DishRotationCmdAction::SET_TARGET:
             targetPercent = constrain(cmd.value, 0, 100);
             targetSpeedPWM = constrain(cmd.pwmSpeed, 0, 255);
             wasMoving = true; // Ensure event triggers even if already at target
             PEACH_LOGD(TAG, "Set target: %d%%, spd: %d", targetPercent, targetSpeedPWM);
             break;
             
-        case ActuatorCmdAction::SET_LIMIT_BOT:
+        case DishRotationCmdAction::SET_LIMIT_BOT:
             limits[0] = cmd.value;
             limitSet[0] = true;
-            StorageManager::saveActuatorLimit(StorageManager::LIMIT_BOT, limits[0], true);
+            StorageManager::saveDishRotationLimit(StorageManager::LIMIT_BOT, limits[0], true);
             PEACH_LOGI(TAG, "Bottom limit set to %d%%", limits[0]);
             break;
             
-        case ActuatorCmdAction::SET_LIMIT_MID:
+        case DishRotationCmdAction::SET_LIMIT_MID:
             limits[1] = cmd.value;
             limitSet[1] = true;
-            StorageManager::saveActuatorLimit(StorageManager::LIMIT_MID, limits[1], true);
+            StorageManager::saveDishRotationLimit(StorageManager::LIMIT_MID, limits[1], true);
             PEACH_LOGI(TAG, "Middle limit set to %d%%", limits[1]);
             break;
             
-        case ActuatorCmdAction::SET_LIMIT_TOP:
+        case DishRotationCmdAction::SET_LIMIT_TOP:
             limits[2] = cmd.value;
             limitSet[2] = true;
-            StorageManager::saveActuatorLimit(StorageManager::LIMIT_TOP, limits[2], true);
+            StorageManager::saveDishRotationLimit(StorageManager::LIMIT_TOP, limits[2], true);
             PEACH_LOGI(TAG, "Top limit set to %d%%", limits[2]);
             break;
             
-        case ActuatorCmdAction::CLEAR_LIMIT_BOT:
+        case DishRotationCmdAction::CLEAR_LIMIT_BOT:
             limitSet[0] = false;
-            StorageManager::saveActuatorLimit(StorageManager::LIMIT_BOT, limits[0], false);
+            StorageManager::saveDishRotationLimit(StorageManager::LIMIT_BOT, limits[0], false);
             PEACH_LOGI(TAG, "Bottom limit cleared");
             break;
             
-        case ActuatorCmdAction::CLEAR_LIMIT_MID:
+        case DishRotationCmdAction::CLEAR_LIMIT_MID:
             limitSet[1] = false;
-            StorageManager::saveActuatorLimit(StorageManager::LIMIT_MID, limits[1], false);
+            StorageManager::saveDishRotationLimit(StorageManager::LIMIT_MID, limits[1], false);
             PEACH_LOGI(TAG, "Middle limit cleared");
             break;
             
-        case ActuatorCmdAction::CLEAR_LIMIT_TOP:
+        case DishRotationCmdAction::CLEAR_LIMIT_TOP:
             limitSet[2] = false;
-            StorageManager::saveActuatorLimit(StorageManager::LIMIT_TOP, limits[2], false);
+            StorageManager::saveDishRotationLimit(StorageManager::LIMIT_TOP, limits[2], false);
             PEACH_LOGI(TAG, "Top limit cleared");
             break;
             
-        case ActuatorCmdAction::GET_LIMITS:
+        case DishRotationCmdAction::GET_LIMITS:
             // Telemetry will include limit data automatically
             break;
     }
@@ -106,7 +105,7 @@ static float interpolateTime(int pwm, const int pwms[], const float times[], int
     return times[size - 1];
 }
 
-void ActuatorNode::hwUpdate() {
+void DishRotationNode::hwUpdate() {
     float timeMs = 3000.0f; // Default safe fallback
 
     if (currentPercent < targetPercent) {
@@ -125,7 +124,7 @@ void ActuatorNode::hwUpdate() {
         if (currentPercent > targetPercent) {
             currentPercent = targetPercent;  // Clamp exact arrival
         }
-        HBridge_Set(ACT_FORWARD, targetSpeedPWM);
+        // HBridge_Set(ACT_FORWARD, targetSpeedPWM);
         
     } else if (currentPercent > targetPercent) {
         wasMoving = true;
@@ -143,15 +142,15 @@ void ActuatorNode::hwUpdate() {
         if (currentPercent < targetPercent) {
             currentPercent = targetPercent;  // Clamp exact arrival
         }
-        HBridge_Set(ACT_REVERSE, targetSpeedPWM);
+        // HBridge_Set(ACT_REVERSE, targetSpeedPWM);
         
     } else {
-        HBridge_Set(ACT_STOP);
+        // HBridge_Set(ACT_STOP);
         
         if (wasMoving) {
             // Save position to NVS if it has changed since last save
             if (std::abs(currentPercent - lastSavedPercent) > 0.1f) {
-                StorageManager::saveActuatorPosition(currentPercent);    
+                StorageManager::saveDishRotationPosition(currentPercent);    
                 lastSavedPercent = currentPercent;
                 PEACH_LOGI(TAG, "Saved actuator position: %.2f%%", currentPercent);
             }
@@ -161,8 +160,8 @@ void ActuatorNode::hwUpdate() {
     }
 }
 
-ActuatorTelemetry ActuatorNode::generateTelemetry() {
-    ActuatorTelemetry tel;
+DishRotationTelemetry DishRotationNode::generateTelemetry() {
+    DishRotationTelemetry tel;
     tel.currentPercent = currentPercent;
     tel.targetPercent = targetPercent;
     tel.limits[0] = limits[0];
@@ -174,52 +173,52 @@ ActuatorTelemetry ActuatorNode::generateTelemetry() {
     return tel;
 }
 
-bool ActuatorNode::setTarget(int percent, int pwmSpeed) {
-    ActuatorCommand cmd;
-    cmd.action = ActuatorCmdAction::SET_TARGET;
+bool DishRotationNode::setTarget(int percent, int pwmSpeed) {
+    DishRotationCommand cmd;
+    cmd.action = DishRotationCmdAction::SET_TARGET;
     cmd.value = percent;
     cmd.pwmSpeed = pwmSpeed;
     return sendCommand(cmd);
 }
 
-bool ActuatorNode::setLimitBot(int percent) {
-    ActuatorCommand cmd;
-    cmd.action = ActuatorCmdAction::SET_LIMIT_BOT;
+bool DishRotationNode::setLimitBot(int percent) {
+    DishRotationCommand cmd;
+    cmd.action = DishRotationCmdAction::SET_LIMIT_BOT;
     cmd.value = percent;
     return sendCommand(cmd);
 }
 
-bool ActuatorNode::setLimitMid(int percent) {
-    ActuatorCommand cmd;
-    cmd.action = ActuatorCmdAction::SET_LIMIT_MID;
+bool DishRotationNode::setLimitMid(int percent) {
+    DishRotationCommand cmd;
+    cmd.action = DishRotationCmdAction::SET_LIMIT_MID;
     cmd.value = percent;
     return sendCommand(cmd);
 }
 
-bool ActuatorNode::setLimitTop(int percent) {
-    ActuatorCommand cmd;
-    cmd.action = ActuatorCmdAction::SET_LIMIT_TOP;
+bool DishRotationNode::setLimitTop(int percent) {
+    DishRotationCommand cmd;
+    cmd.action = DishRotationCmdAction::SET_LIMIT_TOP;
     cmd.value = percent;
     return sendCommand(cmd);
 }
 
-bool ActuatorNode::clearLimitBot() {
-    ActuatorCommand cmd;
-    cmd.action = ActuatorCmdAction::CLEAR_LIMIT_BOT;
+bool DishRotationNode::clearLimitBot() {
+    DishRotationCommand cmd;
+    cmd.action = DishRotationCmdAction::CLEAR_LIMIT_BOT;
     cmd.value = 0;
     return sendCommand(cmd);
 }
 
-bool ActuatorNode::clearLimitMid() {
-    ActuatorCommand cmd;
-    cmd.action = ActuatorCmdAction::CLEAR_LIMIT_MID;
+bool DishRotationNode::clearLimitMid() {
+    DishRotationCommand cmd;
+    cmd.action = DishRotationCmdAction::CLEAR_LIMIT_MID;
     cmd.value = 0;
     return sendCommand(cmd);
 }
 
-bool ActuatorNode::clearLimitTop() {
-    ActuatorCommand cmd;
-    cmd.action = ActuatorCmdAction::CLEAR_LIMIT_TOP;
+bool DishRotationNode::clearLimitTop() {
+    DishRotationCommand cmd;
+    cmd.action = DishRotationCmdAction::CLEAR_LIMIT_TOP;
     cmd.value = 0;
     return sendCommand(cmd);
 }

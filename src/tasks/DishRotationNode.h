@@ -9,7 +9,7 @@
  * Manages H-bridge driven actuator with float-based percentage tracking,
  * NVS-persisted limits (Bot/Mid/Top), and lock-free message passing.
  */
-class ActuatorNode : public ActiveMotionNode<ActuatorCommand, ActuatorTelemetry> {
+class DishRotationNode : public ActiveMotionNode<DishRotationCommand, DishRotationTelemetry> {
 private:
     // High-resolution position tracking (float percent for smooth ramping)
     float currentPercent;
@@ -29,14 +29,14 @@ private:
     static constexpr uint8_t MIN_ACTUATOR_PWM = 155;      // Deadband: Minimum PWM required to physically move the actuator
     
 public:
-    ActuatorNode();
-    virtual ~ActuatorNode();
+    DishRotationNode();
+    virtual ~DishRotationNode();
     
     // Override base class pure virtuals
     void hwInit() override;
-    void processCommand(const ActuatorCommand& cmd) override;
+    void processCommand(const DishRotationCommand& cmd) override;
     void hwUpdate() override;
-    ActuatorTelemetry generateTelemetry() override;
+    DishRotationTelemetry generateTelemetry() override;
     
     // Convenience methods for sending commands
     bool setTarget(int percent, int pwmSpeed = 255);

@@ -366,8 +366,8 @@ static void draw_encoderStatus(const UIData& data) {
 
   // ---- S1: Arm (y=11, text baseline y=17) ----
   {
-    char dc = dirChar(data.armJogDir);
-    if (data.armPosOut != -1 && data.armPosIn != -1) {
+    char dc = dirChar(data.scraperArmJogDir);
+    if (data.scraperArmPosOut != -1 && data.scraperArmPosIn != -1) {
       snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%c", dc);
     } else {
       snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%c NC", dc);
@@ -378,10 +378,10 @@ static void draw_encoderStatus(const UIData& data) {
     const int trackL = 72, trackR = 124, trackY = 14;
     u8g2.drawHLine(trackL, trackY, trackR - trackL);
 
-    if (data.armPosOut != -1 && data.armPosIn != -1 && data.armPosIn != data.armPosOut) {
+    if (data.scraperArmPosOut != -1 && data.scraperArmPosIn != -1 && data.scraperArmPosIn != data.scraperArmPosOut) {
       u8g2.drawVLine(trackL, trackY - 2, 5);
       u8g2.drawVLine(trackR, trackY - 2, 5);
-      int dotX = map((int)data.armPosition, data.armPosOut, data.armPosIn, trackL, trackR);
+      int dotX = map((int)data.scraperArmPosition, data.scraperArmPosOut, data.scraperArmPosIn, trackL, trackR);
       dotX = constrain(dotX, trackL, trackR);
       u8g2.drawDisc(dotX, trackY, 2);
     } else {
@@ -391,14 +391,14 @@ static void draw_encoderStatus(const UIData& data) {
 
   // ---- S2: Actuator (y=20, text baseline y=26) ----
   {
-    char dc = dirChar(data.actJogDir);
-    snprintf(statusBuffer, sizeof(statusBuffer), "S2:Act:%c %d%%", dc, data.actuatorPercent);
+    char dc = dirChar(data.dishRotationJogDir);
+    snprintf(statusBuffer, sizeof(statusBuffer), "S2:Act:%c %d%%", dc, data.dishRotationPercent);
     u8g2.drawStr(0, 26, statusBuffer);
 
     // Fill bar: frame from x=72 to x=124, height 7
     const int barL = 72, barW = 52, barY = 20, barH = 7;
     u8g2.drawFrame(barL, barY, barW, barH);
-    int fillW = map(constrain(data.actuatorPercent, 0, 100), 0, 100, 0, barW - 2);
+    int fillW = map(constrain(data.dishRotationPercent, 0, 100), 0, 100, 0, barW - 2);
     if (fillW > 0) {
       u8g2.drawBox(barL + 1, barY + 1, fillW, barH - 2);
     }
@@ -406,15 +406,15 @@ static void draw_encoderStatus(const UIData& data) {
 
   // ---- S3: Z Motor (y=29, text baseline y=35) ----
   {
-    char dc = dirChar(data.zJogDir);
+    char dc = dirChar(data.dishLiftJogDir);
     snprintf(statusBuffer, sizeof(statusBuffer), "S3:Z:%c", dc);
     u8g2.drawStr(0, 35, statusBuffer);
 
     // Position track with limit ticks (x=72 to x=124, y=32)
-    bool botSet = data.motorLimitSet[0];
-    bool topSet = data.motorLimitSet[2];
-    float minLim = data.motorLimits[0];
-    float maxLim = data.motorLimits[2];
+    bool botSet = data.dishLiftLimitSet[0];
+    bool topSet = data.dishLiftLimitSet[2];
+    float minLim = data.dishLiftLimits[0];
+    float maxLim = data.dishLiftLimits[2];
 
     const int trackL = 72, trackR = 124, trackY = 32;
     u8g2.drawHLine(trackL, trackY, trackR - trackL);
@@ -423,8 +423,8 @@ static void draw_encoderStatus(const UIData& data) {
       float range = maxLim - minLim;
       if (range > 0.01f) {
         for (int i = 0; i < 3; i++) {
-          if (data.motorLimitSet[i]) {
-            float val = data.motorLimits[i];
+          if (data.dishLiftLimitSet[i]) {
+            float val = data.dishLiftLimits[i];
             if (val < minLim) val = minLim;
             if (val > maxLim) val = maxLim;
             int tickX = trackL + (int)(((val - minLim) / range) * (trackR - trackL));
@@ -432,7 +432,7 @@ static void draw_encoderStatus(const UIData& data) {
           }
         }
 
-        float cPos = data.motorPos;
+        float cPos = data.dishLiftPos;
         if (cPos < minLim) cPos = minLim;
         if (cPos > maxLim) cPos = maxLim;
         int dotX = trackL + (int)(((cPos - minLim) / range) * (trackR - trackL));
@@ -453,64 +453,64 @@ static void draw_encoderStatus(const UIData& data) {
       const char* axisName = s4Level0Names[data.s4Menu];
       const char* itemName = "";
 
-      if (data.s4Menu == S4_ARM) {
+      if (data.s4Menu == S4_SCRAPER) {
         itemName = s4ArmSubNames[data.s4SubMenu];
 
-        if (data.s4SubMenu == S4_ARM_BACK) {
+        if (data.s4SubMenu == S4_SCRAPER_BACK) {
           snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Back", axisName);
-        } else if (data.s4SubMenu == S4_ARM_TIP) {
-          if (data.armPosIn != -1)
-            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Tip:%d", axisName, data.armPosIn);
+        } else if (data.s4SubMenu == S4_SCRAPER_TIP) {
+          if (data.scraperArmPosIn != -1)
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Tip:%d", axisName, data.scraperArmPosIn);
           else
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Tip:--", axisName);
-        } else if (data.s4SubMenu == S4_ARM_BUFFER) {
-          if (data.armPosBuffer != -1) {
-            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Buf:%d", axisName, data.armPosBuffer);
+        } else if (data.s4SubMenu == S4_SCRAPER_BUFFER) {
+          if (data.scraperArmPosBuffer != -1) {
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Buf:%d", axisName, data.scraperArmPosBuffer);
           } else {
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Buf:--", axisName);
           }
-        } else if (data.s4SubMenu == S4_ARM_CLEAR) {
-          if (data.armPosOut != -1) {
-            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Clr:%d", axisName, data.armPosOut);
+        } else if (data.s4SubMenu == S4_SCRAPER_CLEAR) {
+          if (data.scraperArmPosOut != -1) {
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Clr:%d", axisName, data.scraperArmPosOut);
           } else {
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Clr:--", axisName);
           }
-        } else if (data.s4SubMenu == S4_ARM_JOG_SPD) {
-          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.armJogSpeed, data.s4InSpeedEdit ? "*" : "");
-        } else if (data.s4SubMenu == S4_ARM_GO_SPD) {
-          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.armGoSpeed, data.s4InSpeedEdit ? "*" : "");
+        } else if (data.s4SubMenu == S4_SCRAPER_JOG_SPD) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.scraperArmJogSpeed, data.s4InSpeedEdit ? "*" : "");
+        } else if (data.s4SubMenu == S4_SCRAPER_GO_SPD) {
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.scraperArmGoSpeed, data.s4InSpeedEdit ? "*" : "");
         }
-      } else if (data.s4Menu == S4_ACT) {
+      } else if (data.s4Menu == S4_ROTATION) {
         int idx = data.s4SubMenu;
         itemName = s4PosSubNames[idx];
         if (idx == S4_POS_BACK) {
           snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Back", axisName);
         } else if (idx == S4_POS_JOG_SPD) {
-          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.actJogSpeed, data.s4InSpeedEdit ? "*" : "");
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.dishRotationJogSpeed, data.s4InSpeedEdit ? "*" : "");
         } else if (idx == S4_POS_GO_SPD) {
-          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.actGoSpeed, data.s4InSpeedEdit ? "*" : "");
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.dishRotationGoSpeed, data.s4InSpeedEdit ? "*" : "");
         } else {
           int limitIdx = (idx == S4_POS_TOP) ? 2 : ((idx == S4_POS_BOT) ? 0 : 1);
-          if (data.actuatorLimitSet[limitIdx]) {
-            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:%d%%", axisName, itemName, data.actuatorLimits[limitIdx]);
+          if (data.dishRotationLimitSet[limitIdx]) {
+            snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:%d%%", axisName, itemName, data.dishRotationLimits[limitIdx]);
           } else {
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:--", axisName, itemName);
           }
         }
-      } else if (data.s4Menu == S4_Z) {
+      } else if (data.s4Menu == S4_LIFT) {
         int idx = data.s4SubMenu;
         itemName = s4PosSubNames[idx];
         if (idx == S4_POS_BACK) {
           snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Back", axisName);
         } else if (idx == S4_POS_JOG_SPD) {
-          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.zJogSpeed, data.s4InSpeedEdit ? "*" : "");
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.dishLiftJogSpeed, data.s4InSpeedEdit ? "*" : "");
         } else if (idx == S4_POS_GO_SPD) {
-          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.zGoSpeed, data.s4InSpeedEdit ? "*" : "");
+          snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.dishLiftGoSpeed, data.s4InSpeedEdit ? "*" : "");
         } else {
           int limitIdx = (idx == S4_POS_TOP) ? 2 : ((idx == S4_POS_BOT) ? 0 : 1);
-          if (data.motorLimitSet[limitIdx]) {
-            int whole = (int)data.motorLimits[limitIdx];
-            int frac = abs((int)(data.motorLimits[limitIdx] * 10) % 10);
+          if (data.dishLiftLimitSet[limitIdx]) {
+            int whole = (int)data.dishLiftLimits[limitIdx];
+            int frac = abs((int)(data.dishLiftLimits[limitIdx] * 10) % 10);
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:%d.%d", axisName, itemName, whole, frac);
           } else {
             snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:--", axisName, itemName);

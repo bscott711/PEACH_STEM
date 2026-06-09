@@ -1,8 +1,8 @@
 #include "controller.h"
 #include "messaging.h"
-#include "tasks/ActuatorNode.h"
-#include "tasks/MotorNode.h"
-#include "tasks/ArmNode.h"
+#include "tasks/DishRotationNode.h"
+#include "tasks/DishLiftNode.h"
+#include "tasks/ScraperArmNode.h"
 #include "drivers/EncoderDriver.h"
 #include "drivers/LCDDriver.h"
 #include "esp_log.h"
@@ -13,18 +13,18 @@
 #include "core/SequenceEngine.h"
 #include "core/InputManager.h"
 // Global queue handles (declared extern in controller.h)
-QueueHandle_t armCmdQueue;
-QueueHandle_t armTelQueue;
-QueueHandle_t actuatorCmdQueue;
-QueueHandle_t actuatorTelQueue;
-QueueHandle_t motorCmdQueue;
-QueueHandle_t motorTelQueue;
+QueueHandle_t scraperArmCmdQueue;
+QueueHandle_t scraperArmTelQueue;
+QueueHandle_t dishRotationCmdQueue;
+QueueHandle_t dishRotationTelQueue;
+QueueHandle_t dishLiftCmdQueue;
+QueueHandle_t dishLiftTelQueue;
 QueueHandle_t lcdDataQueue;
 
 // Global Node instances (defined in main.cpp, extern here)
-extern ArmNode g_armNode;
-extern ActuatorNode g_actuatorNode;
-extern MotorNode g_motorNode;
+extern ScraperArmNode g_scraperArmNode;
+extern DishRotationNode g_dishRotationNode;
+extern DishLiftNode g_dishLiftNode;
 
 
 SemaphoreHandle_t systemStateMutex;
@@ -37,12 +37,12 @@ SystemState systemState = {.mode = IDLE,
                            .s4SubMenu = 0,
                            .s4InSubMenu = false,
                            .s4InSpeedEdit = false,
-                           .armJogSpeed = 5000,
-                           .armGoSpeed = 5000,
-                           .actJogSpeed = 128,
-                           .actGoSpeed = 128,
-                           .zJogSpeed = 5000,
-                           .zGoSpeed = 5000,
+                           .scraperArmJogSpeed = 5000,
+                           .scraperArmGoSpeed = 5000,
+                           .dishRotationJogSpeed = 128,
+                           .dishRotationGoSpeed = 128,
+                           .dishLiftJogSpeed = 5000,
+                           .dishLiftGoSpeed = 5000,
                            .collisionDetected = false,
                            .collisionTimestamp = 0};
 
@@ -63,12 +63,12 @@ void initSystemState() {
     systemState.s4InSpeedEdit = false;
     
     // Load speeds from NVS with defaults
-    systemState.armJogSpeed = StorageManager::loadArmJogSpeed(5000);
-    systemState.armGoSpeed = StorageManager::loadArmGoSpeed(5000);
-    systemState.actJogSpeed = StorageManager::loadActuatorJogSpeed(128);
-    systemState.actGoSpeed = StorageManager::loadActuatorGoSpeed(128);
-    systemState.zJogSpeed = StorageManager::loadZJogSpeed(5000);
-    systemState.zGoSpeed = StorageManager::loadZGoSpeed(5000);
+    systemState.scraperArmJogSpeed = StorageManager::loadScraperArmJogSpeed(5000);
+    systemState.scraperArmGoSpeed = StorageManager::loadScraperArmGoSpeed(5000);
+    systemState.dishRotationJogSpeed = StorageManager::loadDishRotationJogSpeed(128);
+    systemState.dishRotationGoSpeed = StorageManager::loadDishRotationGoSpeed(128);
+    systemState.dishLiftJogSpeed = StorageManager::loadDishLiftJogSpeed(5000);
+    systemState.dishLiftGoSpeed = StorageManager::loadDishLiftGoSpeed(5000);
     
     systemState.collisionDetected = false;
     xSemaphoreGive(systemStateMutex);

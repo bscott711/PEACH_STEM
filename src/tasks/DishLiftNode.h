@@ -10,7 +10,7 @@
  * Encapsulates TMC2209 driver, limit management, SG4 homing state,
  * and float-based position tracking with lock-free message passing.
  */
-class MotorNode : public ActiveMotionNode<MotorCommand, MotorTelemetry> {
+class DishLiftNode : public ActiveMotionNode<DishLiftCommand, DishLiftTelemetry> {
 private:
     // TMC2209 driver instance
     motorDriver driver;
@@ -50,14 +50,14 @@ private:
     int armInPos;
     
 public:
-    MotorNode();
-    virtual ~MotorNode();
+    DishLiftNode();
+    virtual ~DishLiftNode();
     
     // Override base class pure virtuals
     void hwInit() override;
-    void processCommand(const MotorCommand& cmd) override;
+    void processCommand(const DishLiftCommand& cmd) override;
     void hwUpdate() override;
-    MotorTelemetry generateTelemetry() override;
+    DishLiftTelemetry generateTelemetry() override;
     
     // Convenience methods for sending commands
     bool setSpeed(int speed); // Note: Set speed to 0 for E-STOP

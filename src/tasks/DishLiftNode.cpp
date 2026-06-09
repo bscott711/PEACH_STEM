@@ -1,15 +1,15 @@
-#include "tasks/MotorNode.h"
+#include "tasks/DishLiftNode.h"
 #include "drivers/LCDDriver.h"
 #include "controller.h"
 #include "core/NetworkManager.h"
 #include <cmath>
 
-static const char* TAG = "MOTOR_NODE";
+static const char* TAG = "LIFT_NODE";
 
 // External queue handles for reading arm telemetry (for interlock)
-extern QueueHandle_t armTelQueue;
+extern QueueHandle_t scraperArmTelQueue;
 
-MotorNode::MotorNode()
+DishLiftNode::DishLiftNode()
     : currentPosition(0.0f)
     , targetSpeed(0)
     , previousTargetSpeed(0)
@@ -28,10 +28,10 @@ MotorNode::MotorNode()
     limitSet[0] = false; limitSet[1] = false; limitSet[2] = false;
 }
 
-MotorNode::~MotorNode() {
+DishLiftNode::~DishLiftNode() {
 }
 
-void MotorNode::hwInit() {
+void DishLiftNode::hwInit() {
     // Initialize hardware pins
 #if ENABLE_OPTICAL_ENDSTOPS
     pinMode(TOP_ENDSTOP_PIN, INPUT);
@@ -46,8 +46,8 @@ void MotorNode::hwInit() {
     isHomed = false;
     currentPosition = 0.0f;
     
-    StorageManager::loadMotorLimits(limits, limitSet);
-    StorageManager::loadMotorState(isHomed, currentPosition);
+    StorageManager::loadDishLiftLimits(limits, limitSet);
+    StorageManager::loadDishLiftState(isHomed, currentPosition);
     
     PEACH_LOGI(TAG, "Loaded limits: Bot=%.2f(%s), Mid=%.2f(%s), Top=%.2f(%s)",
              limits[0], limitSet[0] ? "Y" : "N",
@@ -55,9 +55,9 @@ void MotorNode::hwInit() {
              limits[2], limitSet[2] ? "Y" : "N");
 }
 
-void MotorNode::processCommand(const MotorCommand& cmd) {
+void DishLiftNode::processCommand(const DishLiftCommand& cmd) {
     switch (cmd.action) {
-        case MotorCmdAction::SET_TARGET:
+        case DishLiftCmdAction::SET_TARGET:
             trackingTarget = cmd.value;
             // Determine direction based on current position
             if (trackingTarget > currentPosition) {
@@ -69,13 +69,13 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
             PEACH_LOGI(TAG, "GOTO target: %.2f at speed %d", trackingTarget, cmd.targetSpeed);
             break;
             
-        case MotorCmdAction::SET_SPEED:
+        case DishLiftCmdAction::SET_SPEED:
             targetSpeed = (int)cmd.value;
             isTrackingTarget = false;
             PEACH_LOGD(TAG, "Set speed: %d", targetSpeed);
             break;
             
-        case MotorCmdAction::START_HOMING:
+        case DishLiftCmdAction::START_HOMING:
             if (homingState == H_IDLE && !motorLocked) {
                 homingState = H_MOVING_TOP;
                 isHoming = true;
@@ -83,56 +83,56 @@ void MotorNode::processCommand(const MotorCommand& cmd) {
             }
             break;
             
-        case MotorCmdAction::SET_LIMIT_BOT:
+        case DishLiftCmdAction::SET_LIMIT_BOT:
             limits[0] = cmd.value;
             limitSet[0] = true;
-            StorageManager::saveMotorLimit(StorageManager::LIMIT_BOT, limits[0], true);
+            StorageManager::saveDishLiftLimit(StorageManager::LIMIT_BOT, limits[0], true);
             PEACH_LOGI(TAG, "Bottom limit set to %.2f", limits[0]);
             break;
             
-        case MotorCmdAction::SET_LIMIT_MID:
+        case DishLiftCmdAction::SET_LIMIT_MID:
             limits[1] = cmd.value;
             limitSet[1] = true;
-            StorageManager::saveMotorLimit(StorageManager::LIMIT_MID, limits[1], true);
+            StorageManager::saveDishLiftLimit(StorageManager::LIMIT_MID, limits[1], true);
             PEACH_LOGI(TAG, "Middle limit set to %.2f", limits[1]);
             break;
             
-        case MotorCmdAction::SET_LIMIT_TOP:
+        case DishLiftCmdAction::SET_LIMIT_TOP:
             currentPosition = 0.0f;
             limits[2] = 0.0f;
             limitSet[2] = true;
-            StorageManager::saveMotorLimit(StorageManager::LIMIT_TOP, limits[2], true);
+            StorageManager::saveDishLiftLimit(StorageManager::LIMIT_TOP, limits[2], true);
             PEACH_LOGI(TAG, "Top limit set to 0 and position zeroed");
             break;
             
-        case MotorCmdAction::CLEAR_LIMIT_BOT:
+        case DishLiftCmdAction::CLEAR_LIMIT_BOT:
             limitSet[0] = false;
-            StorageManager::saveMotorLimit(StorageManager::LIMIT_BOT, limits[0], false);
+            StorageManager::saveDishLiftLimit(StorageManager::LIMIT_BOT, limits[0], false);
             PEACH_LOGI(TAG, "Bottom limit cleared");
             break;
             
-        case MotorCmdAction::CLEAR_LIMIT_MID:
+        case DishLiftCmdAction::CLEAR_LIMIT_MID:
             limitSet[1] = false;
-            StorageManager::saveMotorLimit(StorageManager::LIMIT_MID, limits[1], false);
+            StorageManager::saveDishLiftLimit(StorageManager::LIMIT_MID, limits[1], false);
             PEACH_LOGI(TAG, "Middle limit cleared");
             break;
             
-        case MotorCmdAction::CLEAR_LIMIT_TOP:
+        case DishLiftCmdAction::CLEAR_LIMIT_TOP:
             limitSet[2] = false;
-            StorageManager::saveMotorLimit(StorageManager::LIMIT_TOP, limits[2], false);
+            StorageManager::saveDishLiftLimit(StorageManager::LIMIT_TOP, limits[2], false);
             PEACH_LOGI(TAG, "Top limit cleared");
             break;
             
-        case MotorCmdAction::GET_STATE:
+        case DishLiftCmdAction::GET_STATE:
             // Telemetry will include state automatically
             break;
     }
 }
 
-void MotorNode::hwUpdate() {
+void DishLiftNode::hwUpdate() {
     // Read arm telemetry for interlock logic
-    ArmTelemetry armTel;
-    if (armTelQueue != NULL && xQueuePeek(armTelQueue, &armTel, 0) == pdPASS) {
+    ScraperArmTelemetry armTel;
+    if (scraperArmTelQueue != NULL && xQueuePeek(scraperArmTelQueue, &armTel, 0) == pdPASS) {
         armStepPos = (int)armTel.currentPosition;
         armCalStart = armTel.posOut;  // Use posOut as the "start" position for interlock
         armBufferPos = armTel.posBuffer;
@@ -176,7 +176,7 @@ void MotorNode::hwUpdate() {
                     targetSpeed = 0;
                     homingState = H_IDLE;
                     
-                    StorageManager::saveMotorState(true, 0.0f);
+                    StorageManager::saveDishLiftState(true, 0.0f);
                 } else if (xTaskGetTickCount() - homingStartTime > pdMS_TO_TICKS(15000)) {
                     PEACH_LOGE(TAG, "Homing timeout");
                     LCD_setMessage("Homing: TIMEOUT");
@@ -337,7 +337,7 @@ void MotorNode::hwUpdate() {
     // Save state when stopped and homed
     if (targetSpeed == 0 && previousTargetSpeed != 0) {
         if (isHomed) {
-            StorageManager::saveMotorState(isHomed, currentPosition);
+            StorageManager::saveDishLiftState(isHomed, currentPosition);
         }
         xEventGroupSetBits(controlEvents, BIT_POS_REACHED_Z);
     }
@@ -345,8 +345,8 @@ void MotorNode::hwUpdate() {
     previousTargetSpeed = targetSpeed;
 }
 
-MotorTelemetry MotorNode::generateTelemetry() {
-    MotorTelemetry tel;
+DishLiftTelemetry DishLiftNode::generateTelemetry() {
+    DishLiftTelemetry tel;
     tel.currentPosition = currentPosition;
     tel.targetSpeed = targetSpeed;
     tel.isHomed = isHomed;
@@ -362,66 +362,66 @@ MotorTelemetry MotorNode::generateTelemetry() {
     return tel;
 }
 
-bool MotorNode::setSpeed(int speed) {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::SET_SPEED;
+bool DishLiftNode::setSpeed(int speed) {
+    DishLiftCommand cmd;
+    cmd.action = DishLiftCmdAction::SET_SPEED;
     cmd.value = (float)speed;
     return sendCommand(cmd);
 }
 
-bool MotorNode::startHoming() {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::START_HOMING;
+bool DishLiftNode::startHoming() {
+    DishLiftCommand cmd;
+    cmd.action = DishLiftCmdAction::START_HOMING;
     cmd.value = 0;
     return sendCommand(cmd);
 }
 
-bool MotorNode::setLimitBot(float position) {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::SET_LIMIT_BOT;
+bool DishLiftNode::setLimitBot(float position) {
+    DishLiftCommand cmd;
+    cmd.action = DishLiftCmdAction::SET_LIMIT_BOT;
     cmd.value = position;
     return sendCommand(cmd);
 }
 
-bool MotorNode::setLimitMid(float position) {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::SET_LIMIT_MID;
+bool DishLiftNode::setLimitMid(float position) {
+    DishLiftCommand cmd;
+    cmd.action = DishLiftCmdAction::SET_LIMIT_MID;
     cmd.value = position;
     return sendCommand(cmd);
 }
 
-bool MotorNode::setLimitTop(float position) {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::SET_LIMIT_TOP;
+bool DishLiftNode::setLimitTop(float position) {
+    DishLiftCommand cmd;
+    cmd.action = DishLiftCmdAction::SET_LIMIT_TOP;
     cmd.value = position;
     return sendCommand(cmd);
 }
 
-bool MotorNode::setTarget(float position, int speed) {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::SET_TARGET;
+bool DishLiftNode::setTarget(float position, int speed) {
+    DishLiftCommand cmd;
+    cmd.action = DishLiftCmdAction::SET_TARGET;
     cmd.value = position;
     cmd.targetSpeed = speed;
     return sendCommand(cmd);
 }
 
-bool MotorNode::clearLimitBot() {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::CLEAR_LIMIT_BOT;
+bool DishLiftNode::clearLimitBot() {
+    DishLiftCommand cmd;
+    cmd.action = DishLiftCmdAction::CLEAR_LIMIT_BOT;
     cmd.value = 0;
     return sendCommand(cmd);
 }
 
-bool MotorNode::clearLimitMid() {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::CLEAR_LIMIT_MID;
+bool DishLiftNode::clearLimitMid() {
+    DishLiftCommand cmd;
+    cmd.action = DishLiftCmdAction::CLEAR_LIMIT_MID;
     cmd.value = 0;
     return sendCommand(cmd);
 }
 
-bool MotorNode::clearLimitTop() {
-    MotorCommand cmd;
-    cmd.action = MotorCmdAction::CLEAR_LIMIT_TOP;
+bool DishLiftNode::clearLimitTop() {
+    DishLiftCommand cmd;
+    cmd.action = DishLiftCmdAction::CLEAR_LIMIT_TOP;
     cmd.value = 0;
     return sendCommand(cmd);
 }
