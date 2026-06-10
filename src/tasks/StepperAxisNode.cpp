@@ -8,7 +8,7 @@ StepperAxisNode::StepperAxisNode(const StepperAxisConfig& cfg)
     : config(cfg), currentPosition(0.0f), targetSpeed(0), previousTargetSpeed(0),
       isTrackingTarget(false), trackingTarget(0.0f), targetTrackingSpeed(0),
       lastSavedPosition(-999.0f), limitA(0.0f), limitB(0.0f), limitASet(false),
-      limitBSet(false), isHoming(false), isHomed(false), motorLocked(false), currentSgThreshold(cfg.initialSgThreshold) {}
+      limitBSet(false), isHoming(false), isHomed(false), motorLocked(false), currentSgThreshold(cfg.initialSgThreshold), movementStartTime(0) {}
 
 StepperAxisNode::~StepperAxisNode() {}
 
@@ -17,7 +17,7 @@ void StepperAxisNode::hwInit() {
     driver.begin(*(config.serialPort), config.serialAddress);
 
     if (config.diagPin >= 0) {
-        pinMode(config.diagPin, INPUT);
+        pinMode(config.diagPin, INPUT_PULLDOWN);
     }
 
     // Initialize state
@@ -123,8 +123,13 @@ void StepperAxisNode::hwUpdate() {
         motorLocked = false;
     }
 
+    uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    if (targetSpeed != 0 && previousTargetSpeed == 0) {
+        movementStartTime = now;
+    }
+
     // 4. SG Homing logic
-    if (isHoming) {
+    if (isHoming && targetSpeed != 0 && (now - movementStartTime) > 300) {
         bool stall = false;
         if (config.diagPin >= 0) {
             stall = (digitalRead(config.diagPin) == HIGH);
@@ -212,15 +217,18 @@ void StepperAxisNode::hwUpdate() {
         }
     }
 
-    // 6. SG Crash Detection (only if not homing)
-    /*
-    if (!isHoming && targetSpeed != 0) {
+    // 6. SG Crash Detection (Disabled for calibration)
+    if (!isHoming && targetSpeed != 0 && (now - movementStartTime) > 600) {
+        // Just read the value for telemetry so it shows up on the LCD
+        uint16_t sgRes = driver.getStallGuardResult();
+        
+        // --- STALL ABORT COMPLETELY DISABLED FOR CALIBRATION ---
+        /*
         bool stall = false;
         if (config.diagPin >= 0) {
             stall = (digitalRead(config.diagPin) == HIGH);
         } else {
-            uint16_t sgResult = driver.getStallGuardResult();
-            stall = (sgResult == 0);
+            stall = (sgRes == 0);
         }
 
         if (stall && std::abs(targetSpeed) > 100) {
@@ -229,8 +237,8 @@ void StepperAxisNode::hwUpdate() {
             isTrackingTarget = false;
             LCD_setMessage("STALL!");
         }
+        */
     }
-    */
 
     // 7. Update Position
     if (targetSpeed != 0) {
@@ -270,6 +278,7 @@ AxisTelemetry StepperAxisNode::generateTelemetry() {
     tel.isMoving = (targetSpeed != 0);
     tel.isHoming = isHoming;
     tel.isHomed = isHomed;
+    tel.sgResult = driver.getStallGuardResult();
     tel.timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
     return tel;
 }

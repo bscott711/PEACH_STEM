@@ -9,6 +9,7 @@ public:
   void stop();
   void setStallGuardThreshold(uint8_t threshold);
   uint16_t getStallGuardResult();
+  uint8_t getVersion();
 
 private:
   TMC2209 driver;

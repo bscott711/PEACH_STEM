@@ -56,3 +56,12 @@ uint16_t motorDriver::getStallGuardResult() {
   }
   return result;
 }
+
+uint8_t motorDriver::getVersion() {
+  uint8_t version = 0;
+  if (xSemaphoreTake(tmcUartMutex, portMAX_DELAY) == pdTRUE) {
+    version = driver.getVersion();
+    xSemaphoreGive(tmcUartMutex);
+  }
+  return version;
+}

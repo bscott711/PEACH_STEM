@@ -168,8 +168,8 @@ static void draw_splashScreen() {
   u8g2.drawStr(50, 54, "STEM");
 
   // Small version tag
-  u8g2.setFont(u8g2_font_tiny5_tf);
-  u8g2.drawStr(50, 62, "v1.0");
+  u8g2.setFont(u8g2_font_profont10_tf); // Small font
+  u8g2.drawStr(50, 62, "v1.0dev11");
 
   u8g2.sendBuffer();
 }
@@ -405,7 +405,7 @@ static void draw_encoderStatus(const UIData& data) {
         else if (idx == S4_SCRAPER_SCRAPE) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:%s", axisName, itemName, (data.scraperArmPosScrape != -1) ? "OK" : "--");
         else if (idx == S4_SCRAPER_JOG_SPD) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.scraperArmJogSpeed, data.s4InSpeedEdit ? "*" : "");
         else if (idx == S4_SCRAPER_GO_SPD) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.scraperArmGoSpeed, data.s4InSpeedEdit ? "*" : "");
-        else if (idx == S4_SCRAPER_SG_TUNE) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>SG:%d%s", axisName, data.scraperArmSGThreshold, data.s4InSpeedEdit ? "*" : "");
+        else if (idx == S4_SCRAPER_SG_TUNE) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>SG:%d%s R:%d", axisName, data.scraperArmSGThreshold, data.s4InSpeedEdit ? "*" : "", data.scraperArmSGResult);
       } else if (data.s4Menu == S4_ROTATION) {
         int idx = data.s4SubMenu;
         const char* itemName = s4RotSubNames[idx];
@@ -413,7 +413,7 @@ static void draw_encoderStatus(const UIData& data) {
         else if (idx == S4_ROT_JOG_SPD) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.dishRotationJogSpeed, data.s4InSpeedEdit ? "*" : "");
         else if (idx == S4_ROT_GO_SPD) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.dishRotationGoSpeed, data.s4InSpeedEdit ? "*" : "");
         else if (idx == S4_ROT_NUM_ROTATIONS) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Rot:%d%s", axisName, data.dishRotationNumRotations, data.s4InSpeedEdit ? "*" : "");
-        else if (idx == S4_ROT_SG_TUNE) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>SG:%d%s", axisName, data.dishRotationSGThreshold, data.s4InSpeedEdit ? "*" : "");
+        else if (idx == S4_ROT_SG_TUNE) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>SG:%d%s R:%d", axisName, data.dishRotationSGThreshold, data.s4InSpeedEdit ? "*" : "", data.dishRotationSGResult);
       } else if (data.s4Menu == S4_LIFT) {
         int idx = data.s4SubMenu;
         const char* itemName = s4LiftSubNames[idx];
@@ -423,7 +423,7 @@ static void draw_encoderStatus(const UIData& data) {
         else if (idx == S4_LIFT_JOG_SPD) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.dishLiftJogSpeed, data.s4InSpeedEdit ? "*" : "");
         else if (idx == S4_LIFT_GO_SPD) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.dishLiftGoSpeed, data.s4InSpeedEdit ? "*" : "");
         else if (idx == S4_LIFT_NUM_MIX) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Mix:%d%s", axisName, data.dishLiftNumMix, data.s4InSpeedEdit ? "*" : "");
-        else if (idx == S4_LIFT_SG_TUNE) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>SG:%d%s", axisName, data.dishLiftSGThreshold, data.s4InSpeedEdit ? "*" : "");
+        else if (idx == S4_LIFT_SG_TUNE) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>SG:%d%s R:%d", axisName, data.dishLiftSGThreshold, data.s4InSpeedEdit ? "*" : "", data.dishLiftSGResult);
       }
     }
     u8g2.drawStr(0, 44, statusBuffer);

@@ -61,6 +61,7 @@ protected:
     
     bool motorLocked;
     int currentSgThreshold; // StallGuard Threshold
+    uint32_t movementStartTime;
 
     // Override this in derived classes to implement custom interlocks
     // Return true if movement should be blocked

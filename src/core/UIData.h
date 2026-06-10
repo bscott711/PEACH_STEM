@@ -10,13 +10,17 @@ struct UIData {
   float scraperArmPosition; // Current absolute step position
   int scraperArmPosClear;
   int scraperArmPosScrape;
+  bool scraperArmIsMoving;
   int scraperArmSGThreshold;
+  int scraperArmSGResult;
 
   // S2 Actuator — jog direction + position
   int dishRotationJogDir;  // -1, 0, +1
   float dishRotationPos;
   int dishRotationNumRotations;
+  bool dishRotationIsMoving;
   int dishRotationSGThreshold;
+  int dishRotationSGResult;
 
   // S3 Z Motor — jog direction + position
   int dishLiftJogDir; // -1, 0, +1
@@ -26,7 +30,9 @@ struct UIData {
   bool dishLiftPosHomeSet;
   bool dishLiftPosTiltSet;
   int dishLiftNumMix;
+  bool dishLiftIsMoving;
   int dishLiftSGThreshold;
+  int dishLiftSGResult;
 
   // S4 Menu state
   S4Level0 s4Menu;

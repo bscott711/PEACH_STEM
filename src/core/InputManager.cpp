@@ -97,22 +97,28 @@ void InputManager::populateUIData(UIData& data) {
         data.scraperArmPosition = armTel.currentPosition;
         data.scraperArmPosClear = (int)armTel.posA;
         data.scraperArmPosScrape = (int)armTel.posB;
+        data.scraperArmIsMoving = armTel.isMoving;
+        data.scraperArmSGResult = armTel.sgResult;
     }
 
     // Actuator telemetry
     AxisTelemetry actTel;
     if (xQueuePeek(dishRotationTelQueue, &actTel, 0) == pdPASS) {
         data.dishRotationPos = actTel.currentPosition;
+        data.dishRotationIsMoving = actTel.isMoving;
+        data.dishRotationSGResult = actTel.sgResult;
     }
 
-    // Motor telemetry
-    AxisTelemetry motTel;
-    if (xQueuePeek(dishLiftTelQueue, &motTel, 0) == pdPASS) {
-        data.dishLiftPos = motTel.currentPosition;
-        data.dishLiftPosHome = motTel.posA;
-        data.dishLiftPosTilt = motTel.posB;
-        data.dishLiftPosHomeSet = motTel.posASet;
-        data.dishLiftPosTiltSet = motTel.posBSet;
+    // Z Motor telemetry
+    AxisTelemetry zTel;
+    if (xQueuePeek(dishLiftTelQueue, &zTel, 0) == pdPASS) {
+        data.dishLiftPos = zTel.currentPosition;
+        data.dishLiftPosHome = zTel.posA;
+        data.dishLiftPosTilt = zTel.posB;
+        data.dishLiftPosHomeSet = zTel.posASet;
+        data.dishLiftPosTiltSet = zTel.posBSet;
+        data.dishLiftIsMoving = zTel.isMoving;
+        data.dishLiftSGResult = zTel.sgResult;
     }
 }
 

@@ -43,6 +43,7 @@ struct AxisTelemetry {
   bool isMoving;         // True if motor is actively running
   bool isHoming;
   bool isHomed;
+  uint16_t sgResult;
   uint32_t timestamp;    // Telemetry timestamp (FreeRTOS ticks * portTICK_PERIOD_MS)
 };
 
