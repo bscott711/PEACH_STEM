@@ -13,10 +13,9 @@ struct StepperAxisConfig {
     int rxPin;
     int txPin;
     int enPin;
-    int diagPin;
-
-    // Optional limits. If false, acts as continuous rotation.
-    bool hasLimits;
+    int diagPin;              // DIAG pin for hardware interrupt (if used)
+    bool hasLimits;           // Does this axis have endstops/limits?
+    float sgVelocityGatePercent; // Percentage of target speed to activate SG
     
     // NVS storage function pointers
     void (*savePositionFn)(float);
@@ -38,6 +37,10 @@ struct StepperAxisConfig {
 class StepperAxisNode : public ActiveMotionNode<AxisCommand, AxisTelemetry> {
 protected:
     motorDriver driver;
+    void updateVelocityGate(int speed);
+    int currentGateVelocity = 0; // Current velocity threshold for SG
+
+protected:
     StepperAxisConfig config;
 
     float currentPosition;

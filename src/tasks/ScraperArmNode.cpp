@@ -22,6 +22,7 @@ ScraperArmNode::ScraperArmNode() : StepperAxisNode({
     TMC2209::SERIAL_ADDRESS_1,
     -1, -1, -1, SG_DIAG2,
     false, // Temporarily disabled limits per user request
+    0.5f,  // sgVelocityGatePercent
     savePos, loadPos, saveClear, saveScrape, loadLim,
     StorageManager::loadScraperArmSGThreshold(20), // initial SG Threshold
     ROT_VEL_MULT // Arm velocity multiplier

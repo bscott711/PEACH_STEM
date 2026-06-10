@@ -10,6 +10,7 @@ public:
   void setStallGuardThreshold(uint8_t threshold);
   uint16_t getStallGuardResult();
   uint8_t getVersion();
+  void setCoolStepDurationThreshold(uint32_t threshold);
 
 private:
   TMC2209 driver;

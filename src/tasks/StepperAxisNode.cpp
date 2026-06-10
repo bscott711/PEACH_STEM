@@ -12,6 +12,14 @@ StepperAxisNode::StepperAxisNode(const StepperAxisConfig& cfg)
 
 StepperAxisNode::~StepperAxisNode() {}
 
+void StepperAxisNode::updateVelocityGate(int speed) {
+    if (speed == 0) return;
+    currentGateVelocity = (int)(std::abs((float)speed) * config.sgVelocityGatePercent);
+    if (currentGateVelocity < 10) currentGateVelocity = 10;
+    uint32_t tstep = 16777216 / currentGateVelocity;
+    driver.setCoolStepDurationThreshold(tstep);
+}
+
 void StepperAxisNode::hwInit() {
     vTaskDelay(pdMS_TO_TICKS(200));
     driver.begin(*(config.serialPort), config.serialAddress);
@@ -46,6 +54,7 @@ void StepperAxisNode::processCommand(const AxisCommand& cmd) {
     case AxisCmdAction::SET_SPEED:
         targetSpeed = (int)cmd.value;
         isTrackingTarget = false;
+        updateVelocityGate(targetSpeed);
         ESP_LOGD(config.axisName, "Set speed: %d", targetSpeed);
         break;
 
@@ -53,6 +62,7 @@ void StepperAxisNode::processCommand(const AxisCommand& cmd) {
         trackingTarget = cmd.value;
         targetTrackingSpeed = cmd.targetSpeed;
         isTrackingTarget = true;
+        updateVelocityGate(targetTrackingSpeed);
         ESP_LOGI(config.axisName, "GOTO target: %.2f at speed %d", trackingTarget, cmd.targetSpeed);
         break;
 
@@ -64,12 +74,14 @@ void StepperAxisNode::processCommand(const AxisCommand& cmd) {
         trackingTarget += cmd.value;
         // JOG assumes we already set targetSpeed via SET_SPEED or we default to a safe speed.
         targetTrackingSpeed = std::abs(targetSpeed) > 0 ? std::abs(targetSpeed) : MOTOR_DEFAULT_JOG_SPEED;
+        updateVelocityGate(targetTrackingSpeed);
         break;
 
     case AxisCmdAction::START_HOMING:
         targetSpeed = -3000;
         isHoming = true;
         isTrackingTarget = false;
+        updateVelocityGate(targetSpeed);
         ESP_LOGI(config.axisName, "Homing sequence initiated (SG)");
         break;
 
@@ -132,16 +144,16 @@ void StepperAxisNode::hwUpdate() {
     }
 
     // 4. SG Homing logic
-    const int MIN_SG_VELOCITY = 500;
-    bool isMovingStable = std::abs(targetSpeed) > MIN_SG_VELOCITY;
+    bool isMovingStable = std::abs(targetSpeed) > currentGateVelocity;
 
     if (isHoming && isMovingStable && (now - movementStartTime) > 300) {
         bool stall = false;
         if (config.diagPin >= 0) {
-            stall = (digitalRead(config.diagPin) == HIGH);
+            stall = (digitalRead(config.diagPin) == LOW);
         } else {
             uint16_t sgResult = driver.getStallGuardResult();
-            stall = (sgResult == 0);
+            // TMC2209: SG_RESULT increases with load. Stall when it exceeds threshold.
+            stall = (currentSgThreshold > 0 && sgResult >= (uint16_t)(currentSgThreshold * 2));
         }
 
         if (stall) {
@@ -234,13 +246,15 @@ void StepperAxisNode::hwUpdate() {
             filteredSgResult = (filteredSgResult * 3 + sgRaw) / 4;
         }
 
-        // --- STALL ABORT COMPLETELY DISABLED FOR CALIBRATION ---
-        /*
+        // Stall Abort Logic
+        // TMC2209: SG_RESULT increases with load. Stall when it exceeds threshold.
         bool stall = false;
-        if (config.diagPin >= 0) {
-            stall = (digitalRead(config.diagPin) == HIGH);
-        } else {
-            stall = (sgRaw == 0);
+        if (currentSgThreshold > 0) {
+            if (config.diagPin >= 0) {
+                stall = (digitalRead(config.diagPin) == LOW);
+            } else {
+                stall = (sgRaw >= (uint16_t)(currentSgThreshold * 2));
+            }
         }
 
         if (stall && std::abs(targetSpeed) > 100) {
@@ -249,7 +263,6 @@ void StepperAxisNode::hwUpdate() {
             isTrackingTarget = false;
             LCD_setMessage("STALL!");
         }
-        */
     } else if (targetSpeed == 0) {
         filteredSgResult = 0; // Reset filter when stopped
     }

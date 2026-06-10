@@ -10,7 +10,6 @@ void motorDriver::begin(HardwareSerial &serial,
   driver.disableCoolStep();
   driver.enableStealthChop();
   driver.setMicrostepsPerStep(16);
-  driver.setCoolStepDurationThreshold(34000); // Enable StallGuard only for VACTUAL > 493
 
     driver.enable();
 
@@ -64,4 +63,11 @@ uint8_t motorDriver::getVersion() {
     xSemaphoreGive(tmcUartMutex);
   }
   return version;
+}
+
+void motorDriver::setCoolStepDurationThreshold(uint32_t threshold) {
+  if (xSemaphoreTake(tmcUartMutex, portMAX_DELAY) == pdTRUE) {
+    driver.setCoolStepDurationThreshold(threshold);
+    xSemaphoreGive(tmcUartMutex);
+  }
 }
