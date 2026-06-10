@@ -8,7 +8,7 @@ StepperAxisNode::StepperAxisNode(const StepperAxisConfig& cfg)
     : config(cfg), currentPosition(0.0f), targetSpeed(0), previousTargetSpeed(0),
       isTrackingTarget(false), trackingTarget(0.0f), targetTrackingSpeed(0),
       lastSavedPosition(-999.0f), limitA(0.0f), limitB(0.0f), limitASet(false),
-      limitBSet(false), isHoming(false), isHomed(false), motorLocked(false), currentSgThreshold(cfg.initialSgThreshold), lastPushedSg(-1), movementStartTime(0) {}
+      limitBSet(false), isHoming(false), isHomed(false), motorLocked(false), currentSgThreshold(cfg.initialSgThreshold), lastPushedSg(-1), filteredSgResult(0), movementStartTime(0) {}
 
 StepperAxisNode::~StepperAxisNode() {}
 
@@ -226,15 +226,21 @@ void StepperAxisNode::hwUpdate() {
     // 6. SG Crash Detection (Disabled for calibration)
     if (!isHoming && targetSpeed != 0 && (now - movementStartTime) > 600) {
         // Just read the value for telemetry so it shows up on the LCD
-        uint16_t sgRes = driver.getStallGuardResult();
+        uint16_t sgRaw = driver.getStallGuardResult();
         
+        if (filteredSgResult == 0) {
+            filteredSgResult = sgRaw;
+        } else {
+            filteredSgResult = (filteredSgResult * 3 + sgRaw) / 4;
+        }
+
         // --- STALL ABORT COMPLETELY DISABLED FOR CALIBRATION ---
         /*
         bool stall = false;
         if (config.diagPin >= 0) {
             stall = (digitalRead(config.diagPin) == HIGH);
         } else {
-            stall = (sgRes == 0);
+            stall = (sgRaw == 0);
         }
 
         if (stall && std::abs(targetSpeed) > 100) {
@@ -244,6 +250,8 @@ void StepperAxisNode::hwUpdate() {
             LCD_setMessage("STALL!");
         }
         */
+    } else if (targetSpeed == 0) {
+        filteredSgResult = 0; // Reset filter when stopped
     }
 
     // 7. Update Position
@@ -284,7 +292,7 @@ AxisTelemetry StepperAxisNode::generateTelemetry() {
     tel.isMoving = (targetSpeed != 0);
     tel.isHoming = isHoming;
     tel.isHomed = isHomed;
-    tel.sgResult = driver.getStallGuardResult();
+    tel.sgResult = filteredSgResult;
     tel.timestamp = xTaskGetTickCount() * portTICK_PERIOD_MS;
     return tel;
 }
