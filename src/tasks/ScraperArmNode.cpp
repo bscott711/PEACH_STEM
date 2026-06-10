@@ -23,7 +23,7 @@ ScraperArmNode::ScraperArmNode() : StepperAxisNode({
     -1, -1, -1, SG_DIAG2,
     false, // Temporarily disabled limits per user request
     savePos, loadPos, saveClear, saveScrape, loadLim,
-    StorageManager::loadScraperArmSGThreshold(100), // initial SG Threshold
+    StorageManager::loadScraperArmSGThreshold(20), // initial SG Threshold
     ROT_VEL_MULT // Arm velocity multiplier
 }) {}
 

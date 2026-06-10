@@ -23,7 +23,7 @@ DishLiftNode::DishLiftNode() : StepperAxisNode({
     -1, -1, -1, SG_DIAG3,
     false, // Temporarily disabled limits per user request
     savePos, loadPos, saveHome, saveTilt, loadLim,
-    StorageManager::loadDishLiftSGThreshold(100), // initial SG
+    StorageManager::loadDishLiftSGThreshold(20), // initial SG
     Z_VEL_MULT // Lift velocity multiplier
 }) {}
 

@@ -13,7 +13,7 @@ DishRotationNode::DishRotationNode() : StepperAxisNode({
     -1, -1, -1, SG_DIAG1,
     false, // NO limits (continuous rotation)
     savePos, loadPos, nullptr, nullptr, nullptr,
-    StorageManager::loadDishRotationSGThreshold(100), // initial SG
+    StorageManager::loadDishRotationSGThreshold(20), // initial SG
     ROT_VEL_MULT // Rotation velocity multiplier
 }) {}
 

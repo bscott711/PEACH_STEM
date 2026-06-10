@@ -8,7 +8,7 @@ StepperAxisNode::StepperAxisNode(const StepperAxisConfig& cfg)
     : config(cfg), currentPosition(0.0f), targetSpeed(0), previousTargetSpeed(0),
       isTrackingTarget(false), trackingTarget(0.0f), targetTrackingSpeed(0),
       lastSavedPosition(-999.0f), limitA(0.0f), limitB(0.0f), limitASet(false),
-      limitBSet(false), isHoming(false), isHomed(false), motorLocked(false), currentSgThreshold(cfg.initialSgThreshold), movementStartTime(0) {}
+      limitBSet(false), isHoming(false), isHomed(false), motorLocked(false), currentSgThreshold(cfg.initialSgThreshold), lastPushedSg(-1), movementStartTime(0) {}
 
 StepperAxisNode::~StepperAxisNode() {}
 
@@ -110,7 +110,10 @@ void StepperAxisNode::processCommand(const AxisCommand& cmd) {
 
 void StepperAxisNode::hwUpdate() {
     // 1. Update StallGuard dynamically
-    driver.setStallGuardThreshold(currentSgThreshold);
+    if (currentSgThreshold != lastPushedSg) {
+        driver.setStallGuardThreshold(currentSgThreshold);
+        lastPushedSg = currentSgThreshold;
+    }
 
     // 2. Interlock check
     if (checkInterlock(targetSpeed)) {
@@ -129,7 +132,10 @@ void StepperAxisNode::hwUpdate() {
     }
 
     // 4. SG Homing logic
-    if (isHoming && targetSpeed != 0 && (now - movementStartTime) > 300) {
+    const int MIN_SG_VELOCITY = 500;
+    bool isMovingStable = std::abs(targetSpeed) > MIN_SG_VELOCITY;
+
+    if (isHoming && isMovingStable && (now - movementStartTime) > 300) {
         bool stall = false;
         if (config.diagPin >= 0) {
             stall = (digitalRead(config.diagPin) == HIGH);
@@ -138,7 +144,7 @@ void StepperAxisNode::hwUpdate() {
             stall = (sgResult == 0);
         }
 
-        if (stall && std::abs(targetSpeed) > 100) {
+        if (stall) {
             targetSpeed = 0;
             currentPosition = 0.0f; // Zero out on stall
             isHomed = true;

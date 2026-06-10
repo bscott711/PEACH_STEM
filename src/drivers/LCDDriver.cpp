@@ -332,9 +332,9 @@ static void draw_encoderStatus(const UIData& data) {
   {
     char dc = dirChar(data.scraperArmJogDir);
     if (data.scraperArmPosClear != -1 && data.scraperArmPosScrape != -1) {
-      snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%c", dc);
+      snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%c SG:%d", dc, data.scraperArmSGResult);
     } else {
-      snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%c NC", dc);
+      snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%c SG:%d NC", dc, data.scraperArmSGResult);
     }
     u8g2.drawStr(0, 17, statusBuffer);
 
@@ -355,14 +355,14 @@ static void draw_encoderStatus(const UIData& data) {
   // ---- S2: Rotation ----
   {
     char dc = dirChar(data.dishRotationJogDir);
-    snprintf(statusBuffer, sizeof(statusBuffer), "S2:Rot:%c", dc);
+    snprintf(statusBuffer, sizeof(statusBuffer), "S2:Rot:%c SG:%d", dc, data.dishRotationSGResult);
     u8g2.drawStr(0, 26, statusBuffer);
   }
 
   // ---- S3: Z Motor ----
   {
     char dc = dirChar(data.dishLiftJogDir);
-    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Z:%c", dc);
+    snprintf(statusBuffer, sizeof(statusBuffer), "S3:Z:%c SG:%d", dc, data.dishLiftSGResult);
     u8g2.drawStr(0, 35, statusBuffer);
 
     bool botSet = data.dishLiftPosHomeSet;
