@@ -82,8 +82,6 @@ void initSystemState() {
   }
 }
 
-// Removed unused state save wrappers
-
 // ============================================================================
 // Main Controller Task
 // ============================================================================
@@ -118,5 +116,3 @@ void controller_task(void *pvParameters) {
 }
 
 
-
-// Removed unused motor calculators

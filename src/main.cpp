@@ -18,8 +18,6 @@ ScraperArmNode g_scraperArmNode;
 DishRotationNode g_dishRotationNode;
 DishLiftNode g_dishLiftNode;
 
-// Removed initWiFiAndOTA
-
 void setup() {
   // Begin USB serial for debugging/monitoring
   Serial.begin(115200);

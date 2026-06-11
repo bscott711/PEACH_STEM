@@ -31,30 +31,6 @@ ScraperArmNode::ScraperArmNode() : StepperAxisNode({
 ScraperArmNode::~ScraperArmNode() {}
 
 bool ScraperArmNode::checkInterlock(int desiredSpeed) {
-    // TEMPORARILY DISABLED: "Scraper arm is blocked from moving down only if the DishLift is not in it's Home position"
-    // Moving down means moving towards Scrape (LimitB). In our config, LimitA is Clear (approx 0), LimitB is Scrape (positive).
-    // So moving down is desiredSpeed > 0
-    /*
-    if (desiredSpeed > 0) {
-        AxisTelemetry liftTel;
-        if (dishLiftTelQueue != NULL && xQueuePeek(dishLiftTelQueue, &liftTel, 0) == pdPASS) {
-            uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-            if ((now - liftTel.timestamp) > 500) {
-                LCD_setMessage("Arm Blocked: Timeout");
-                return true;
-            }
 
-            // Check if lift is not in Home position (posA)
-            if (!liftTel.posASet || std::abs(liftTel.currentPosition - liftTel.posA) > 5.0f) {
-                LCD_setMessage("Arm Blocked: Lift!");
-                return true;
-            }
-        } else {
-            // Queue is empty or null, block just in case
-            LCD_setMessage("Arm Blocked: No Tel");
-            return true;
-        }
-    }
-    */
     return false;
 }

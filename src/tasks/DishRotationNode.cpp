@@ -21,27 +21,6 @@ DishRotationNode::DishRotationNode() : StepperAxisNode({
 DishRotationNode::~DishRotationNode() {}
 
 bool DishRotationNode::checkInterlock(int desiredSpeed) {
-    // TEMPORARILY DISABLED: "Dish rotation is blocked if the Lift is not in its home position"
-    /*
-    if (desiredSpeed != 0) {
-        AxisTelemetry liftTel;
-        if (dishLiftTelQueue != NULL && xQueuePeek(dishLiftTelQueue, &liftTel, 0) == pdPASS) {
-            uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-            if ((now - liftTel.timestamp) > 500) {
-                LCD_setMessage("Rot Blocked: Timeout");
-                return true;
-            }
 
-            // Check if lift is not in Home position (posA)
-            if (!liftTel.posASet || std::abs(liftTel.currentPosition - liftTel.posA) > 5.0f) {
-                LCD_setMessage("Rot Blocked: Lift!");
-                return true;
-            }
-        } else {
-            LCD_setMessage("Rot Blocked: No Tel");
-            return true;
-        }
-    }
-    */
     return false;
 }

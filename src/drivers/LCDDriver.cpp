@@ -169,7 +169,7 @@ static void draw_splashScreen() {
 
   // Small version tag
   u8g2.setFont(u8g2_font_profont10_tf); // Small font
-  u8g2.drawStr(50, 62, "v1.0dev11");
+  u8g2.drawStr(50, 62, "v3.1");
 
   u8g2.sendBuffer();
 }
