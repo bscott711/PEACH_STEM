@@ -179,25 +179,13 @@ void StepperAxisNode::hwUpdate() {
         // Calculate proportional control for tracking target
         if (isTrackingTarget) {
             float error = trackingTarget - currentPosition;
-            float desiredSpeedFloat = error * MOTOR_TRACKING_KP;
-            int desiredSpeed = (int)constrain(desiredSpeedFloat, -targetTrackingSpeed, targetTrackingSpeed);
-
-            int maxAccelPerTick = targetTrackingSpeed / 100;
-            if (maxAccelPerTick < 10) maxAccelPerTick = 10;
-
-            if (desiredSpeed > targetSpeed + maxAccelPerTick) {
-                targetSpeed += maxAccelPerTick;
-            } else if (desiredSpeed < targetSpeed - maxAccelPerTick) {
-                targetSpeed -= maxAccelPerTick;
-            } else {
-                targetSpeed = desiredSpeed;
-            }
-
-            if (std::abs(error) < MOTOR_TARGET_TOLERANCE && std::abs(targetSpeed) <= 10) {
+            if (std::abs(error) <= MOTOR_TARGET_TOLERANCE) {
                 currentPosition = trackingTarget;
                 targetSpeed = 0;
                 isTrackingTarget = false;
                 LCD_setMessage("Target Reached");
+            } else {
+                targetSpeed = (error > 0) ? targetTrackingSpeed : -targetTrackingSpeed;
             }
         }
 
@@ -215,12 +203,6 @@ void StepperAxisNode::hwUpdate() {
                     currentPosition = minLim;
                     isTrackingTarget = false;
                     LCD_setMessage("Min Limit Reached");
-                } else if (distToBot < MOTOR_LIMIT_DECEL_DIST) {
-                    int minSpeed = 1000;
-                    int maxSpeed = std::abs(targetSpeed);
-                    if (maxSpeed > minSpeed) {
-                        targetSpeed = -(minSpeed + (int)((maxSpeed - minSpeed) * (distToBot / MOTOR_LIMIT_DECEL_DIST)));
-                    }
                 }
             } else if (targetSpeed > 0 && maxSet) {
                 float distToTop = maxLim - currentPosition;
@@ -229,12 +211,6 @@ void StepperAxisNode::hwUpdate() {
                     currentPosition = maxLim;
                     isTrackingTarget = false;
                     LCD_setMessage("Max Limit Reached");
-                } else if (distToTop < MOTOR_LIMIT_DECEL_DIST) {
-                    int minSpeed = 1000;
-                    int maxSpeed = std::abs(targetSpeed);
-                    if (maxSpeed > minSpeed) {
-                        targetSpeed = minSpeed + (int)((maxSpeed - minSpeed) * (distToTop / MOTOR_LIMIT_DECEL_DIST));
-                    }
                 }
             }
         }
