@@ -279,8 +279,8 @@ AxisTelemetry StepperAxisNode::generateTelemetry() {
     tel.currentPosition = currentPosition;
     tel.targetPosition = isTrackingTarget ? trackingTarget : currentPosition;
     tel.targetSpeed = targetSpeed;
-    tel.posA = limitA;
-    tel.posB = limitB;
+    tel.posA = limitASet ? limitA : -1.0f;
+    tel.posB = limitBSet ? limitB : -1.0f;
     tel.posASet = limitASet;
     tel.posBSet = limitBSet;
     tel.isMoving = (targetSpeed != 0);
