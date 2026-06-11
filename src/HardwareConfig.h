@@ -49,7 +49,7 @@
 // Tracking & Integration Constants
 // ==========================================
 #define MOTOR_TRACKING_KP 5.0f
-#define MOTOR_TARGET_TOLERANCE 2.0f
+#define MOTOR_TARGET_TOLERANCE 50.0f
 #define MOTOR_LIMIT_DECEL_DIST 50.0f
 #define MOTOR_DEFAULT_JOG_SPEED 5000
 #define Z_VEL_MULT 1.372e-6f

@@ -319,6 +319,37 @@ static const char* s4ArmSubNames[] = {"Clear", "Scrape", "DropPos", "JogSpd", "G
 static const char* s4RotSubNames[] = {"JogSpd", "GoSpd", "NumRot", "SGTune", "Back"};
 static const char* s4LiftSubNames[] = {"Home", "Tilt", "JogSpd", "GoSpd", "NumMix", "SGTune", "Back"};
 
+static void drawAxisTrack(int trackL, int trackR, int trackY, bool isSet, float posA, float posB, float currentPos, float dropPos = -1.0f) {
+  u8g2.drawHLine(trackL, trackY, trackR - trackL);
+
+  if (isSet && posA != posB) {
+    float minPos = std::min(posA, posB);
+    float maxPos = std::max(posA, posB);
+    
+    u8g2.drawVLine(trackL, trackY - 2, 5); // Track ends
+    u8g2.drawVLine(trackR, trackY - 2, 5);
+
+    float range = maxPos - minPos;
+    if (range > 0.000001f) {
+        // Draw DropPos line if set
+        if (dropPos != -1.0f && dropPos >= minPos && dropPos <= maxPos) {
+            int dropX = trackL + (int)(((dropPos - minPos) / range) * (trackR - trackL));
+            dropX = constrain(dropX, trackL, trackR);
+            u8g2.drawVLine(dropX, trackY - 4, 9); // Taller line for DropPos
+        }
+
+        float cPos = constrain(currentPos, minPos, maxPos);
+        int dotX = trackL + (int)(((cPos - minPos) / range) * (trackR - trackL));
+        dotX = constrain(dotX, trackL, trackR);
+        u8g2.drawDisc(dotX, trackY, 2);
+    } else {
+        u8g2.drawDisc((trackL + trackR) / 2, trackY, 2);
+    }
+  } else {
+    u8g2.drawDisc((trackL + trackR) / 2, trackY, 2);
+  }
+}
+
 static void draw_encoderStatus(const UIData& data) {
   char statusBuffer[32];
 
@@ -331,36 +362,15 @@ static void draw_encoderStatus(const UIData& data) {
   // ---- S1: Arm ----
   {
     char dc = dirChar(data.scraperArmJogDir);
-    if (data.scraperArmPosClear != -1 && data.scraperArmPosScrape != -1) {
+    bool s1Set = (data.scraperArmPosClear != -1 && data.scraperArmPosScrape != -1);
+    if (s1Set) {
       snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%c SG:%d", dc, data.scraperArmSGResult);
     } else {
       snprintf(statusBuffer, sizeof(statusBuffer), "S1:Arm:%c SG:%d NC", dc, data.scraperArmSGResult);
     }
     u8g2.drawStr(0, 17, statusBuffer);
 
-    const int trackL = 72, trackR = 124, trackY = 14;
-    u8g2.drawHLine(trackL, trackY, trackR - trackL);
-
-    if (data.scraperArmPosClear != -1 && data.scraperArmPosScrape != -1 && data.scraperArmPosScrape != data.scraperArmPosClear) {
-      float minPos = std::min(data.scraperArmPosClear, data.scraperArmPosScrape);
-      float maxPos = std::max(data.scraperArmPosClear, data.scraperArmPosScrape);
-      
-      u8g2.drawVLine(trackL, trackY - 2, 5); // Track ends
-      u8g2.drawVLine(trackR, trackY - 2, 5);
-
-      // Draw DropPos line if set
-      if (data.scraperArmDropPos != -1) {
-          int dropX = map(data.scraperArmDropPos, minPos, maxPos, trackL, trackR);
-          dropX = constrain(dropX, trackL, trackR);
-          u8g2.drawVLine(dropX, trackY - 4, 9); // Taller line for DropPos
-      }
-
-      int dotX = map((int)data.scraperArmPosition, minPos, maxPos, trackL, trackR);
-      dotX = constrain(dotX, trackL, trackR);
-      u8g2.drawDisc(dotX, trackY, 2);
-    } else {
-      u8g2.drawDisc((trackL + trackR) / 2, trackY, 2);
-    }
+    drawAxisTrack(72, 124, 14, s1Set, data.scraperArmPosClear, data.scraperArmPosScrape, data.scraperArmPosition, data.scraperArmDropPos);
   }
 
   // ---- S2: Rotation ----
@@ -376,29 +386,8 @@ static void draw_encoderStatus(const UIData& data) {
     snprintf(statusBuffer, sizeof(statusBuffer), "S3:Z:%c SG:%d", dc, data.dishLiftSGResult);
     u8g2.drawStr(0, 35, statusBuffer);
 
-    bool botSet = data.dishLiftPosHomeSet;
-    bool topSet = data.dishLiftPosTiltSet;
-    float minLim = data.dishLiftPosHome;
-    float maxLim = data.dishLiftPosTilt;
-
-    const int trackL = 72, trackR = 124, trackY = 32;
-    u8g2.drawHLine(trackL, trackY, trackR - trackL);
-
-    if (botSet && topSet && maxLim > minLim) {
-      float range = maxLim - minLim;
-      if (range > 0.01f) {
-        u8g2.drawVLine(trackL, trackY - 2, 5);
-        u8g2.drawVLine(trackR, trackY - 2, 5);
-
-        float cPos = data.dishLiftPos;
-        if (cPos < minLim) cPos = minLim;
-        if (cPos > maxLim) cPos = maxLim;
-        int dotX = trackL + (int)(((cPos - minLim) / range) * (trackR - trackL));
-        u8g2.drawDisc(dotX, trackY, 2);
-      }
-    } else {
-      u8g2.drawDisc((trackL + trackR) / 2, trackY, 2);
-    }
+    bool s3Set = (data.dishLiftPosHomeSet && data.dishLiftPosTiltSet);
+    drawAxisTrack(72, 124, 32, s3Set, data.dishLiftPosHome, data.dishLiftPosTilt, data.dishLiftPos);
   }
 
   // ---- S4: Menu ----

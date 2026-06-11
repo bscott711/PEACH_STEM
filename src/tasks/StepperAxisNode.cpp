@@ -144,10 +144,6 @@ void StepperAxisNode::hwUpdate() {
     }
 
     uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    if (targetSpeed != 0 && previousTargetSpeed == 0) {
-        movementStartTime = now;
-    }
-
     // 4. SG Homing logic
     bool isMovingStable = std::abs(targetSpeed) > currentGateVelocity;
 
@@ -178,8 +174,11 @@ void StepperAxisNode::hwUpdate() {
     if (!motorLocked && targetSpeed != 0 || isTrackingTarget) {
         // Calculate proportional control for tracking target
         if (isTrackingTarget) {
+            float maxDeltaPerTick = config.velocityMultiplier * (float)targetTrackingSpeed * ((float)TASK_UPDATE_INTERVAL_MS / 1000.0f);
+            float dynamicTolerance = std::abs(maxDeltaPerTick) * 1.5f + 1e-7f;
+            
             float error = trackingTarget - currentPosition;
-            if (std::abs(error) <= MOTOR_TARGET_TOLERANCE) {
+            if (std::abs(error) <= dynamicTolerance) {
                 currentPosition = trackingTarget;
                 targetSpeed = 0;
                 isTrackingTarget = false;
@@ -214,6 +213,11 @@ void StepperAxisNode::hwUpdate() {
                 }
             }
         }
+    }
+
+    now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    if (targetSpeed != 0 && previousTargetSpeed == 0) {
+        movementStartTime = now;
     }
 
     // 6. SG Crash Detection (Disabled for calibration)
