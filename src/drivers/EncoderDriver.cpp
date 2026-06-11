@@ -108,7 +108,7 @@ void EncoderDriver_Service() {
           g_encoderState.buttonLongPressed[i] = true;
         }
         if (d != 0) {
-          g_encoderState.position[i] += d;
+          g_encoderState.position[i] -= d; // Inverted hardware direction
 
           // Rate limit the serial output so I2C doesn't get starved
           static TickType_t lastLogTime[4] = {0};
