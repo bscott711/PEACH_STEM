@@ -4,10 +4,12 @@
 #include <cmath>
 
 static void saveClear(float pos) {
-  StorageManager::saveScraperArmPosClear((int)pos);
+  if (pos <= -999999.0f) StorageManager::saveScraperArmPosClear(-1);
+  else StorageManager::saveScraperArmPosClear((int)pos);
 }
 static void saveScrape(float pos) {
-  StorageManager::saveScraperArmPosScrape((int)pos);
+  if (pos <= -999999.0f) StorageManager::saveScraperArmPosScrape(-1);
+  else StorageManager::saveScraperArmPosScrape((int)pos);
 }
 static void loadLim(float &A, float &B, bool &ASet, bool &BSet) {
   int pa, pb;

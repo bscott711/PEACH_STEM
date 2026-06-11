@@ -155,10 +155,10 @@ void InputManager::handleArmEncoder() {
     }
     if (delta > 0) {
       g_jogDirArm = 1;
-      g_scraperArmNode.setSpeed(-speed); // Negated for UI mapping
+      g_scraperArmNode.setSpeed(speed);
     } else {
       g_jogDirArm = -1;
-      g_scraperArmNode.setSpeed(speed); // Negated for UI mapping
+      g_scraperArmNode.setSpeed(-speed);
     }
   }
 
@@ -571,8 +571,11 @@ void InputManager::handleMenuEncoder() {
     if (axis == S4_SCRAPER) {
       if (item == S4_SCRAPER_CLEAR) {
         g_scraperArmNode.zeroPosition();
-        g_scraperArmNode.setLimitA(0.0f);
-        LCD_setMessage("Arm: Clear Set (0)");
+        g_scraperArmNode.clearLimits(); // Wipes NVS and node memory via -1000000.0f
+        g_scraperArmNode.setLimitA(0.0f); // Re-establish Clear as 0
+        systemState.scraperArmDropPos = -1;
+        StorageManager::saveScraperArmDropPos(-1);
+        LCD_setMessage("Arm: Cal Reset (0)");
       } else if (item == S4_SCRAPER_SCRAPE) {
         g_scraperArmNode.setLimitB(armCurrentPos);
         LCD_setMessage("Arm: Scrape Set");

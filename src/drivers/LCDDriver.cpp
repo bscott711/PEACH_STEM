@@ -342,9 +342,20 @@ static void draw_encoderStatus(const UIData& data) {
     u8g2.drawHLine(trackL, trackY, trackR - trackL);
 
     if (data.scraperArmPosClear != -1 && data.scraperArmPosScrape != -1 && data.scraperArmPosScrape != data.scraperArmPosClear) {
-      u8g2.drawVLine(trackL, trackY - 2, 5);
+      float minPos = std::min(data.scraperArmPosClear, data.scraperArmPosScrape);
+      float maxPos = std::max(data.scraperArmPosClear, data.scraperArmPosScrape);
+      
+      u8g2.drawVLine(trackL, trackY - 2, 5); // Track ends
       u8g2.drawVLine(trackR, trackY - 2, 5);
-      int dotX = map((int)data.scraperArmPosition, data.scraperArmPosClear, data.scraperArmPosScrape, trackL, trackR);
+
+      // Draw DropPos line if set
+      if (data.scraperArmDropPos != -1) {
+          int dropX = map(data.scraperArmDropPos, minPos, maxPos, trackL, trackR);
+          dropX = constrain(dropX, trackL, trackR);
+          u8g2.drawVLine(dropX, trackY - 4, 9); // Taller line for DropPos
+      }
+
+      int dotX = map((int)data.scraperArmPosition, minPos, maxPos, trackL, trackR);
       dotX = constrain(dotX, trackL, trackR);
       u8g2.drawDisc(dotX, trackY, 2);
     } else {

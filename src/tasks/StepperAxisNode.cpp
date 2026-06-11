@@ -102,8 +102,8 @@ void StepperAxisNode::processCommand(const AxisCommand& cmd) {
     case AxisCmdAction::CLEAR_CAL:
         limitASet = false;
         limitBSet = false;
-        if (config.saveLimitAFn) config.saveLimitAFn(0.0f);
-        if (config.saveLimitBFn) config.saveLimitBFn(0.0f);
+        if (config.saveLimitAFn) config.saveLimitAFn(-1000000.0f);
+        if (config.saveLimitBFn) config.saveLimitBFn(-1000000.0f);
         ESP_LOGI(config.axisName, "Limits cleared");
         break;
 
@@ -202,7 +202,7 @@ void StepperAxisNode::hwUpdate() {
         }
 
         // Apply Limits (Soft Endstops) if enabled
-        if (config.hasLimits && !isHoming && targetSpeed != 0) {
+        if (config.hasLimits && limitASet && limitBSet && !isHoming && targetSpeed != 0) {
             float minLim = std::min(limitA, limitB);
             float maxLim = std::max(limitA, limitB);
             bool minSet = (limitA <= limitB) ? limitASet : limitBSet;
