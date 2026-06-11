@@ -31,7 +31,7 @@ ScraperArmNode::ScraperArmNode()
           0.5f,  // sgVelocityGatePercent
           savePos, loadPos, saveClear, saveScrape, loadLim,
           StorageManager::loadScraperArmSGThreshold(20), // initial SG Threshold
-          ROT_VEL_MULT // Arm velocity multiplier
+          STEPPER_VEL_MULT // Arm velocity multiplier
       }) {}
 
 ScraperArmNode::~ScraperArmNode() {}

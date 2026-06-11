@@ -33,15 +33,9 @@ static bool wait_for_event(EventBits_t bitToWait) {
 
 static bool move_lift(bool toTilt) {
     AxisTelemetry motorTel;
-    float currentPos = 0;
     float targetZ = 0;
     if (xQueuePeek(dishLiftTelQueue, &motorTel, pdMS_TO_TICKS(10)) == pdPASS) {
-        currentPos = motorTel.currentPosition;
         targetZ = toTilt ? motorTel.posB : motorTel.posA;
-    }
-
-    if (std::abs(targetZ - currentPos) <= 0.1f) {
-        return true;
     }
 
     int goSpeed = 5000;
@@ -63,9 +57,6 @@ static bool move_scraper(bool toScrape) {
         if (!armTel.posASet || !armTel.posBSet) return true; // Uncalibrated
         
         float targetAbs = toScrape ? armTel.posB : armTel.posA;
-        if (std::abs(armTel.currentPosition - targetAbs) < 2.0f) {
-            return true;
-        }
 
         int goSpeed = 5000;
         if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {

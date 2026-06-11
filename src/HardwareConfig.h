@@ -52,8 +52,7 @@
 #define MOTOR_TARGET_TOLERANCE 50.0f
 #define MOTOR_LIMIT_DECEL_DIST 50.0f
 #define MOTOR_DEFAULT_JOG_SPEED 5000
-#define Z_VEL_MULT 1.372e-6f
-#define ROT_VEL_MULT 0.715f
+#define STEPPER_VEL_MULT 1.0f
 
 // Standard wiring for TMC2209 with 1K resistor bridging TX to RX
 #define TXD1 17 // ESP Transmits on physical TX2 pin (17) -> goes through 1K resistor to RX2

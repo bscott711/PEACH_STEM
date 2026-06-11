@@ -24,7 +24,7 @@ DishLiftNode::DishLiftNode()
           0.5f,  // sgVelocityGatePercent
           savePos, loadPos, saveHome, saveTilt, loadLim,
           StorageManager::loadDishLiftSGThreshold(20), // initial SG
-          Z_VEL_MULT // Lift velocity multiplier
+          STEPPER_VEL_MULT // Lift velocity multiplier
       }) {}
 
 DishLiftNode::~DishLiftNode() {}
