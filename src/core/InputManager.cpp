@@ -570,8 +570,9 @@ void InputManager::handleMenuEncoder() {
   if (longPress && !isBack && systemState.s4InSubMenu) {
     if (axis == S4_SCRAPER) {
       if (item == S4_SCRAPER_CLEAR) {
-        g_scraperArmNode.setLimitA(armCurrentPos);
-        LCD_setMessage("Arm: Clear Set");
+        g_scraperArmNode.zeroPosition();
+        g_scraperArmNode.setLimitA(0.0f);
+        LCD_setMessage("Arm: Clear Set (0)");
       } else if (item == S4_SCRAPER_SCRAPE) {
         g_scraperArmNode.setLimitB(armCurrentPos);
         LCD_setMessage("Arm: Scrape Set");
@@ -582,8 +583,9 @@ void InputManager::handleMenuEncoder() {
       }
     } else if (axis == S4_LIFT) {
       if (item == S4_LIFT_HOME) {
-        g_dishLiftNode.setLimitA(motorCurrentPos);
-        LCD_setMessage("Z: Home Set");
+        g_dishLiftNode.zeroPosition();
+        g_dishLiftNode.setLimitA(0.0f);
+        LCD_setMessage("Z: Home Set (0)");
       } else if (item == S4_LIFT_TILT) {
         g_dishLiftNode.setLimitB(motorCurrentPos);
         LCD_setMessage("Z: Tilt Set");
