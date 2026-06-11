@@ -174,17 +174,21 @@ void StepperAxisNode::hwUpdate() {
     if (!motorLocked && targetSpeed != 0 || isTrackingTarget) {
         // Calculate proportional control for tracking target
         if (isTrackingTarget) {
-            float maxDeltaPerTick = config.velocityMultiplier * (float)targetTrackingSpeed * ((float)TASK_UPDATE_INTERVAL_MS / 1000.0f);
-            float dynamicTolerance = std::abs(maxDeltaPerTick) * 1.5f + 1e-7f;
-            
             float error = trackingTarget - currentPosition;
-            if (std::abs(error) <= dynamicTolerance) {
+            
+            if (std::abs(error) <= 2.0f) {
                 currentPosition = trackingTarget;
                 targetSpeed = 0;
                 isTrackingTarget = false;
                 LCD_setMessage("Target Reached");
             } else {
-                targetSpeed = (error > 0) ? targetTrackingSpeed : -targetTrackingSpeed;
+                float ticksPerSec = 1000.0f / (float)TASK_UPDATE_INTERVAL_MS;
+                float exactSpeed = (error / config.velocityMultiplier) * ticksPerSec;
+                
+                if (exactSpeed > targetTrackingSpeed) exactSpeed = targetTrackingSpeed;
+                if (exactSpeed < -targetTrackingSpeed) exactSpeed = -targetTrackingSpeed;
+                
+                targetSpeed = (int)exactSpeed;
             }
         }
 
