@@ -25,7 +25,7 @@ static float loadPos() { return StorageManager::loadScraperArmPosition(); }
 ScraperArmNode::ScraperArmNode()
     : StepperAxisNode({
           "ARM_NODE", &Serial1, TMC2209::SERIAL_ADDRESS_1, -1, -1, -1, SG_DIAG2,
-          false, // Temporarily disabled limits per user request
+          true, // Limits enabled
           0.5f,  // sgVelocityGatePercent
           savePos, loadPos, saveClear, saveScrape, loadLim,
           StorageManager::loadScraperArmSGThreshold(20), // initial SG Threshold

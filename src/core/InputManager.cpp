@@ -540,11 +540,18 @@ void InputManager::handleMenuEncoder() {
         return;
       }
       if (item == S4_SCRAPER_CLEAR) {
-        g_scraperArmNode.setTarget(0.0f, systemState.scraperArmGoSpeed); // 0%
+        g_scraperArmNode.setTarget((float)scraperArmPosClear, systemState.scraperArmGoSpeed);
         LCD_setMessage("Arm: Go Clear");
       } else if (item == S4_SCRAPER_SCRAPE) {
-        g_scraperArmNode.setTarget(100.0f, systemState.scraperArmGoSpeed); // 100%
+        g_scraperArmNode.setTarget((float)scraperArmPosScrape, systemState.scraperArmGoSpeed);
         LCD_setMessage("Arm: Go Scrape");
+      } else if (item == S4_SCRAPER_DROP_POS) {
+        if (systemState.scraperArmDropPos != -1) {
+          g_scraperArmNode.setTarget((float)systemState.scraperArmDropPos, systemState.scraperArmGoSpeed);
+          LCD_setMessage("Arm: Go DropPos");
+        } else {
+          LCD_setMessage("Arm: DropPos Not Set");
+        }
       }
     } else if (axis == S4_LIFT) {
       if (item == S4_LIFT_HOME) {
@@ -568,6 +575,10 @@ void InputManager::handleMenuEncoder() {
       } else if (item == S4_SCRAPER_SCRAPE) {
         g_scraperArmNode.setLimitB(armCurrentPos);
         LCD_setMessage("Arm: Scrape Set");
+      } else if (item == S4_SCRAPER_DROP_POS) {
+        systemState.scraperArmDropPos = (int)armCurrentPos;
+        StorageManager::saveScraperArmDropPos(systemState.scraperArmDropPos);
+        LCD_setMessage("Arm: DropPos Set");
       }
     } else if (axis == S4_LIFT) {
       if (item == S4_LIFT_HOME) {

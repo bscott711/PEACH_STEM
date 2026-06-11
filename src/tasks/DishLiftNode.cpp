@@ -20,7 +20,7 @@ DishLiftNode::DishLiftNode()
     : StepperAxisNode({
           "LIFT_NODE", &Serial1, TMC2209::SERIAL_ADDRESS_0, -1, -1, -1,
           SG_DIAG3,
-          false, // Temporarily disabled limits per user request
+          true, // Limits enabled
           0.5f,  // sgVelocityGatePercent
           savePos, loadPos, saveHome, saveTilt, loadLim,
           StorageManager::loadDishLiftSGThreshold(20), // initial SG
