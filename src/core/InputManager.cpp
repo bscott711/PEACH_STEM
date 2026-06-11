@@ -416,7 +416,7 @@ void InputManager::handleMenuEncoder() {
           if (spd < 10) spd = 10;
           if (spd > 5000) spd = 5000;
         } else if (item == S4_SCRAPER_SG_TUNE) {
-          systemState.scraperArmSGThreshold += delta * 5;
+          systemState.scraperArmSGThreshold += delta;
           if (systemState.scraperArmSGThreshold < 0) systemState.scraperArmSGThreshold = 0;
           if (systemState.scraperArmSGThreshold > 255) systemState.scraperArmSGThreshold = 255;
         }
@@ -431,7 +431,7 @@ void InputManager::handleMenuEncoder() {
           systemState.dishRotationNumRotations += delta;
           if (systemState.dishRotationNumRotations < 1) systemState.dishRotationNumRotations = 1;
         } else if (item == S4_ROT_SG_TUNE) {
-          systemState.dishRotationSGThreshold += delta * 5;
+          systemState.dishRotationSGThreshold += delta;
           if (systemState.dishRotationSGThreshold < 0) systemState.dishRotationSGThreshold = 0;
           if (systemState.dishRotationSGThreshold > 255) systemState.dishRotationSGThreshold = 255;
         }
@@ -446,7 +446,7 @@ void InputManager::handleMenuEncoder() {
           systemState.dishLiftNumMix += delta;
           if (systemState.dishLiftNumMix < 1) systemState.dishLiftNumMix = 1;
         } else if (item == S4_LIFT_SG_TUNE) {
-          systemState.dishLiftSGThreshold += delta * 5;
+          systemState.dishLiftSGThreshold += delta;
           if (systemState.dishLiftSGThreshold < 0) systemState.dishLiftSGThreshold = 0;
           if (systemState.dishLiftSGThreshold > 255) systemState.dishLiftSGThreshold = 255;
         }
