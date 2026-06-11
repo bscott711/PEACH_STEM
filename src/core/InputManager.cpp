@@ -155,10 +155,10 @@ void InputManager::handleArmEncoder() {
     }
     if (delta > 0) {
       g_jogDirArm = 1;
-      g_scraperArmNode.setSpeed(speed);
+      g_scraperArmNode.setSpeed(-speed); // Negated for UI mapping
     } else {
       g_jogDirArm = -1;
-      g_scraperArmNode.setSpeed(-speed);
+      g_scraperArmNode.setSpeed(speed); // Negated for UI mapping
     }
   }
 
@@ -285,7 +285,7 @@ void InputManager::handleMenuEncoder() {
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     static int32_t lastPos = 0;
-    delta = -(g_encoderState.position[3] - lastPos); // Invert UI direction
+    delta = g_encoderState.position[3] - lastPos;
     lastPos = g_encoderState.position[3];
 
     if (g_encoderState.buttonPressed[3]) {
@@ -344,7 +344,7 @@ void InputManager::handleMenuEncoder() {
   if (!systemState.s4InSubMenu) {
     // Encoder turn: cycle through Level 0 options
     if (delta != 0) {
-      int sel = (int)systemState.s4Menu + delta;
+      int sel = (int)systemState.s4Menu - delta;
       while (sel < 0) sel += S4_LEVEL0_COUNT;
       sel = sel % S4_LEVEL0_COUNT;
       systemState.s4Menu = (S4Level0)sel;
@@ -458,7 +458,7 @@ void InputManager::handleMenuEncoder() {
         }
       }
     } else {
-      int sel = systemState.s4SubMenu + delta;
+      int sel = systemState.s4SubMenu - delta;
       while (sel < 0) sel += itemCount;
       sel = sel % itemCount;
       systemState.s4SubMenu = sel;
