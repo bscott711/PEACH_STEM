@@ -285,7 +285,7 @@ void InputManager::handleMenuEncoder() {
 
   if (xSemaphoreTake(encoderStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
     static int32_t lastPos = 0;
-    delta = g_encoderState.position[3] - lastPos;
+    delta = -(g_encoderState.position[3] - lastPos); // Invert UI direction
     lastPos = g_encoderState.position[3];
 
     if (g_encoderState.buttonPressed[3]) {
