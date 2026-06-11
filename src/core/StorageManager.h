@@ -44,4 +44,8 @@ public:
     static int loadScraperArmGoSpeed(int defaultSpeed);
     static void saveScraperArmSGThreshold(int sg);
     static int loadScraperArmSGThreshold(int defaultSg);
+    static void saveScraperArmDropPos(int pos);
+    static int loadScraperArmDropPos();
+    static void saveScraperArmTenCur(int current);
+    static int loadScraperArmTenCur(int defaultCurrent);
 };

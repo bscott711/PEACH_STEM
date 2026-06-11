@@ -92,4 +92,5 @@ public:
     bool zeroPosition();
     bool startHoming();
     bool setSGThreshold(int threshold);
+    bool setCurrent(uint8_t currentPercent);
 };

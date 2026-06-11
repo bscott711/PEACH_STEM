@@ -18,11 +18,13 @@ enum S4Level0 {
 // Sub-menu indices for Arm
 #define S4_SCRAPER_CLEAR 0
 #define S4_SCRAPER_SCRAPE 1
-#define S4_SCRAPER_JOG_SPD 2
-#define S4_SCRAPER_GO_SPD 3
-#define S4_SCRAPER_SG_TUNE 4
-#define S4_SCRAPER_BACK 5
-#define S4_SCRAPER_COUNT 6
+#define S4_SCRAPER_DROP_POS 2
+#define S4_SCRAPER_JOG_SPD 3
+#define S4_SCRAPER_GO_SPD 4
+#define S4_SCRAPER_SG_TUNE 5
+#define S4_SCRAPER_TEN_CUR 6
+#define S4_SCRAPER_BACK 7
+#define S4_SCRAPER_COUNT 8
 
 // Sub-menu indices for Rotation
 #define S4_ROT_JOG_SPD 0
@@ -74,6 +76,8 @@ struct SystemState {
   int scraperArmJogSpeed;
   int scraperArmGoSpeed;
   int scraperArmSGThreshold;
+  int scraperArmDropPos;
+  int scraperArmTenCur;
   
   int dishRotationJogSpeed;
   int dishRotationGoSpeed;

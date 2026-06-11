@@ -315,7 +315,7 @@ static void draw_buttonStatus(const UIData& data) {
 }
 
 static const char* s4Level0Names[] = {"Shutdown", "Arm", "Rot", "Z", "Auto"};
-static const char* s4ArmSubNames[] = {"Clear", "Scrape", "JogSpd", "GoSpd", "SGTune", "Back"};
+static const char* s4ArmSubNames[] = {"Clear", "Scrape", "DropPos", "JogSpd", "GoSpd", "SGTune", "DropCur", "Back"};
 static const char* s4RotSubNames[] = {"JogSpd", "GoSpd", "NumRot", "SGTune", "Back"};
 static const char* s4LiftSubNames[] = {"Home", "Tilt", "JogSpd", "GoSpd", "NumMix", "SGTune", "Back"};
 
@@ -403,9 +403,11 @@ static void draw_encoderStatus(const UIData& data) {
         if (idx == S4_SCRAPER_BACK) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Back", axisName);
         else if (idx == S4_SCRAPER_CLEAR) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:%s", axisName, itemName, (data.scraperArmPosClear != -1) ? "OK" : "--");
         else if (idx == S4_SCRAPER_SCRAPE) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:%s", axisName, itemName, (data.scraperArmPosScrape != -1) ? "OK" : "--");
+        else if (idx == S4_SCRAPER_DROP_POS) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>%s:%s", axisName, itemName, (data.scraperArmDropPos != -1) ? "OK" : "--");
         else if (idx == S4_SCRAPER_JOG_SPD) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Jog:%d%s", axisName, data.scraperArmJogSpeed, data.s4InSpeedEdit ? "*" : "");
         else if (idx == S4_SCRAPER_GO_SPD) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>Go:%d%s", axisName, data.scraperArmGoSpeed, data.s4InSpeedEdit ? "*" : "");
         else if (idx == S4_SCRAPER_SG_TUNE) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>SG:%d%s R:%d", axisName, data.scraperArmSGThreshold, data.s4InSpeedEdit ? "*" : "", data.scraperArmSGResult);
+        else if (idx == S4_SCRAPER_TEN_CUR) snprintf(statusBuffer, sizeof(statusBuffer), "S4:%s>TenC:%d%%%s", axisName, data.scraperArmTenCur, data.s4InSpeedEdit ? "*" : "");
       } else if (data.s4Menu == S4_ROTATION) {
         int idx = data.s4SubMenu;
         const char* itemName = s4RotSubNames[idx];

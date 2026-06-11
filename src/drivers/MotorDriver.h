@@ -11,6 +11,7 @@ public:
   uint16_t getStallGuardResult();
   uint8_t getVersion();
   void setCoolStepDurationThreshold(uint32_t threshold);
+  void setCurrent(uint8_t runCurrentPercent);
 
 private:
   TMC2209 driver;

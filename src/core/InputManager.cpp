@@ -70,6 +70,8 @@ void InputManager::populateUIData(UIData& data) {
         data.scraperArmJogSpeed = systemState.scraperArmJogSpeed;
         data.scraperArmGoSpeed = systemState.scraperArmGoSpeed;
         data.scraperArmSGThreshold = systemState.scraperArmSGThreshold;
+        data.scraperArmDropPos = systemState.scraperArmDropPos;
+        data.scraperArmTenCur = systemState.scraperArmTenCur;
 
         data.dishRotationJogSpeed = systemState.dishRotationJogSpeed;
         data.dishRotationGoSpeed = systemState.dishRotationGoSpeed;
@@ -419,6 +421,10 @@ void InputManager::handleMenuEncoder() {
           systemState.scraperArmSGThreshold += delta;
           if (systemState.scraperArmSGThreshold < 0) systemState.scraperArmSGThreshold = 0;
           if (systemState.scraperArmSGThreshold > 255) systemState.scraperArmSGThreshold = 255;
+        } else if (item == S4_SCRAPER_TEN_CUR) {
+          systemState.scraperArmTenCur += delta * 5;
+          if (systemState.scraperArmTenCur < 10) systemState.scraperArmTenCur = 10;
+          if (systemState.scraperArmTenCur > 100) systemState.scraperArmTenCur = 100;
         }
       } else if (axis == S4_ROTATION) {
         if (item == S4_ROT_JOG_SPD || item == S4_ROT_GO_SPD) {
@@ -483,7 +489,7 @@ void InputManager::handleMenuEncoder() {
 
     // Check if we are interacting with an Edit setting item
     bool isSettingItem = false;
-    if (axis == S4_SCRAPER && (item == S4_SCRAPER_JOG_SPD || item == S4_SCRAPER_GO_SPD || item == S4_SCRAPER_SG_TUNE)) isSettingItem = true;
+    if (axis == S4_SCRAPER && (item == S4_SCRAPER_JOG_SPD || item == S4_SCRAPER_GO_SPD || item == S4_SCRAPER_SG_TUNE || item == S4_SCRAPER_TEN_CUR)) isSettingItem = true;
     if (axis == S4_ROTATION && (item == S4_ROT_JOG_SPD || item == S4_ROT_GO_SPD || item == S4_ROT_NUM_ROTATIONS || item == S4_ROT_SG_TUNE)) isSettingItem = true;
     if (axis == S4_LIFT && (item == S4_LIFT_JOG_SPD || item == S4_LIFT_GO_SPD || item == S4_LIFT_NUM_MIX || item == S4_LIFT_SG_TUNE)) isSettingItem = true;
 
@@ -492,9 +498,13 @@ void InputManager::handleMenuEncoder() {
         // Exit edit mode and save
         systemState.s4InSpeedEdit = false;
         if (axis == S4_SCRAPER) {
-          if (item == S4_SCRAPER_JOG_SPD) StorageManager::saveScraperArmJogSpeed(systemState.scraperArmJogSpeed);
-          else if (item == S4_SCRAPER_GO_SPD) StorageManager::saveScraperArmGoSpeed(systemState.scraperArmGoSpeed);
-          else if (item == S4_SCRAPER_SG_TUNE) {
+          if (item == S4_SCRAPER_JOG_SPD) {
+            StorageManager::saveScraperArmJogSpeed(systemState.scraperArmJogSpeed);
+          } else if (item == S4_SCRAPER_GO_SPD) {
+            StorageManager::saveScraperArmGoSpeed(systemState.scraperArmGoSpeed);
+          } else if (item == S4_SCRAPER_TEN_CUR) {
+            StorageManager::saveScraperArmTenCur(systemState.scraperArmTenCur);
+          } else if (item == S4_SCRAPER_SG_TUNE) {
             StorageManager::saveScraperArmSGThreshold(systemState.scraperArmSGThreshold);
             g_scraperArmNode.setSGThreshold(systemState.scraperArmSGThreshold);
           }

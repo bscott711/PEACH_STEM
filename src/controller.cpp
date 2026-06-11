@@ -63,9 +63,11 @@ void initSystemState() {
     systemState.s4InSpeedEdit = false;
     
     // Load speeds from NVS with defaults
-    systemState.scraperArmJogSpeed = StorageManager::loadScraperArmJogSpeed(5000);
-    systemState.scraperArmGoSpeed = StorageManager::loadScraperArmGoSpeed(5000);
+    systemState.scraperArmJogSpeed = StorageManager::loadScraperArmJogSpeed(1000);
+    systemState.scraperArmGoSpeed = StorageManager::loadScraperArmGoSpeed(2000);
     systemState.scraperArmSGThreshold = StorageManager::loadScraperArmSGThreshold(20);
+    systemState.scraperArmDropPos = StorageManager::loadScraperArmDropPos();
+    systemState.scraperArmTenCur = StorageManager::loadScraperArmTenCur(30);
 
     systemState.dishRotationJogSpeed = StorageManager::loadDishRotationJogSpeed(128);
     systemState.dishRotationGoSpeed = StorageManager::loadDishRotationGoSpeed(128);

@@ -117,6 +117,11 @@ void StepperAxisNode::processCommand(const AxisCommand& cmd) {
         currentSgThreshold = (int)cmd.value;
         ESP_LOGI(config.axisName, "SG Threshold updated to %d", currentSgThreshold);
         break;
+
+    case AxisCmdAction::SET_CURRENT:
+        driver.setCurrent(cmd.currentPercent);
+        ESP_LOGI(config.axisName, "Motor current set to %d%%", cmd.currentPercent);
+        break;
     }
 }
 
@@ -378,5 +383,12 @@ bool StepperAxisNode::setSGThreshold(int threshold) {
     AxisCommand cmd;
     cmd.action = AxisCmdAction::SET_SG_THRESHOLD;
     cmd.value = (float)threshold;
+    return sendCommand(cmd);
+}
+
+bool StepperAxisNode::setCurrent(uint8_t currentPercent) {
+    AxisCommand cmd;
+    cmd.action = AxisCmdAction::SET_CURRENT;
+    cmd.currentPercent = currentPercent;
     return sendCommand(cmd);
 }

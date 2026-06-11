@@ -80,6 +80,46 @@ static bool move_scraper(bool toScrape) {
     return true;
 }
 
+static bool move_scraper_tension() {
+    AxisTelemetry armTel;
+    if (xQueuePeek(scraperArmTelQueue, &armTel, pdMS_TO_TICKS(10)) == pdPASS) {
+        if (!armTel.posASet || !armTel.posBSet) return true; // Uncalibrated
+        
+        int goSpeed = 5000;
+        int dropPos = -1;
+        int tenCur = 100;
+        
+        if (xSemaphoreTake(systemStateMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            goSpeed = systemState.scraperArmGoSpeed;
+            dropPos = systemState.scraperArmDropPos;
+            tenCur = systemState.scraperArmTenCur;
+            xSemaphoreGive(systemStateMutex);
+        }
+
+        // Phase 1: Move to drop position if set
+        if (dropPos != -1) {
+            g_scraperArmNode.setTarget((float)dropPos, goSpeed);
+            xEventGroupClearBits(controlEvents, BIT_POS_REACHED_ARM);
+            if (!wait_for_event(BIT_POS_REACHED_ARM)) return false; // Aborted
+        }
+
+        // Phase 2: Drop current
+        if (tenCur < 100) g_scraperArmNode.setCurrent(tenCur);
+
+        // Phase 3: Move to Scrape position (tensioning)
+        g_scraperArmNode.setTarget(armTel.posB, goSpeed);
+
+        xEventGroupClearBits(controlEvents, BIT_POS_REACHED_ARM);
+        bool result = wait_for_event(BIT_POS_REACHED_ARM);
+
+        // Phase 5: Restore current
+        if (tenCur < 100) g_scraperArmNode.setCurrent(100);
+
+        return result;
+    }
+    return true;
+}
+
 static bool rotate_dish(int numRotations) {
     if (numRotations <= 0) return true;
 
@@ -125,7 +165,7 @@ void autonomous_task(void *pvParameters) {
         }
 
         LCD_setMessage("Auto: Lower Arm");
-        if (!aborted) aborted = !move_scraper(true); // Scrape
+        if (!aborted) aborted = !move_scraper_tension(); // Tension approach to Scrape
         
         LCD_setMessage("Auto: Rotating");
         if (!aborted) aborted = !rotate_dish(numRotations);

@@ -23,13 +23,15 @@ enum class AxisCmdAction {
   JOG,             // Jog target by relative steps
   ZERO_POS,        // Set current position as 0 (used for continuous)
   START_HOMING,    // Start homing sequence
-  SET_SG_THRESHOLD // Set StallGuard threshold
+  SET_SG_THRESHOLD,// Set StallGuard threshold
+  SET_CURRENT      // Set motor run current percentage
 };
 
 struct AxisCommand {
   AxisCmdAction action;
   float value;     // Target position or speed
   int targetSpeed; // Speed for GOTO tracking
+  uint8_t currentPercent; // Motor run current percentage
 };
 
 struct AxisTelemetry {

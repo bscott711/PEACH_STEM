@@ -71,3 +71,10 @@ void motorDriver::setCoolStepDurationThreshold(uint32_t threshold) {
     xSemaphoreGive(tmcUartMutex);
   }
 }
+
+void motorDriver::setCurrent(uint8_t runCurrentPercent) {
+  if (xSemaphoreTake(tmcUartMutex, portMAX_DELAY) == pdTRUE) {
+    driver.setAllCurrentValues(runCurrentPercent, runCurrentPercent, 10);
+    xSemaphoreGive(tmcUartMutex);
+  }
+}

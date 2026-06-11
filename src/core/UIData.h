@@ -13,6 +13,8 @@ struct UIData {
   bool scraperArmIsMoving;
   int scraperArmSGThreshold;
   int scraperArmSGResult;
+  int scraperArmDropPos;
+  int scraperArmTenCur;
 
   // S2 Actuator — jog direction + position
   int dishRotationJogDir;  // -1, 0, +1

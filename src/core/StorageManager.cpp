@@ -159,3 +159,19 @@ void StorageManager::saveScraperArmSGThreshold(int sg) {
 int StorageManager::loadScraperArmSGThreshold(int defaultSg) {
     return prefs.getInt("armSG", defaultSg);
 }
+
+void StorageManager::saveScraperArmDropPos(int pos) {
+    prefs.putInt("armDropPos", pos);
+}
+
+int StorageManager::loadScraperArmDropPos() {
+    return prefs.getInt("armDropPos", -1);
+}
+
+void StorageManager::saveScraperArmTenCur(int current) {
+    prefs.putInt("armTenCur", current);
+}
+
+int StorageManager::loadScraperArmTenCur(int defaultCurrent) {
+    return prefs.getInt("armTenCur", defaultCurrent);
+}
