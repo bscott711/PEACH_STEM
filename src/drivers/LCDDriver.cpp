@@ -158,7 +158,7 @@ static void draw_splashScreen() {
 
   currentLeaf = 0;
   fallingPeachLeafIndex = -1;
-  drawBranch(100, 32.0f, 32.0f, 64.0f, 12.0f, 0.0f, 0, 1);
+  drawBranch(100, 22.0f, 22.0f, 64.0f, 12.0f, 0.0f, 0, 1);
 
   // === Text (right of peach) ===
   u8g2.setFont(u8g2_font_helvB14_tr);
@@ -179,7 +179,7 @@ void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool fai
 
   currentLeaf = 0;
   fallingPeachLeafIndex = -1;
-  drawBranch(100, 32.0f, 32.0f, 64.0f, 12.0f, 0.0f, 0, 1);
+  drawBranch(100, 22.0f, 22.0f, 64.0f, 12.0f, 0.0f, 0, 1);
 
   // WiFi Connection text on the right
   u8g2.setFont(u8g2_font_helvB08_tr);
@@ -280,11 +280,21 @@ void LCD_notifyButtonPress(int index) {
 
 static void draw_displayTimer() {
   uint32_t t = (xTaskGetTickCount() * portTICK_PERIOD_MS) / 1000;
-  uint32_t m = t / 60;
   uint32_t s = t % 60;
+  uint32_t total_m = t / 60;
+  uint32_t m = total_m % 60;
+  uint32_t h = total_m / 60;
+  uint32_t d = h / 24;
+  h = h % 24;
+  
   char timerBuffer[32];
-  snprintf(timerBuffer, sizeof(timerBuffer), "RUN:%02u:%02u", (unsigned int)m,
-           (unsigned int)s);
+  if (d > 0) {
+      snprintf(timerBuffer, sizeof(timerBuffer), "RUN:%lu-%02lu:%02lu:%02lu", (unsigned long)d, (unsigned long)h, (unsigned long)m, (unsigned long)s);
+  } else if (h > 0) {
+      snprintf(timerBuffer, sizeof(timerBuffer), "RUN:%lu:%02lu:%02lu", (unsigned long)h, (unsigned long)m, (unsigned long)s);
+  } else {
+      snprintf(timerBuffer, sizeof(timerBuffer), "RUN:%02lu:%02lu", (unsigned long)m, (unsigned long)s);
+  }
   u8g2.drawStr(0, 6, timerBuffer);
 }
 

@@ -125,8 +125,6 @@ void NetworkManager::init() {
       g_otaStatus = "Success! Rebooting";
       Serial.println("\nEnd");
       g_otaActive = true;
-      delay(1000);
-      g_otaActive = false;
     })
     .onProgress([](unsigned int progress, unsigned int total) {
       g_otaProgress = (progress * 100) / total;
