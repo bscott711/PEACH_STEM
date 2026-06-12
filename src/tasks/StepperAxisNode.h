@@ -30,6 +30,9 @@ struct StepperAxisConfig {
     // Initial StallGuard threshold loaded from NVS
     int initialSgThreshold;
 
+    // FIX: Add function pointer to load SG threshold dynamically
+    int (*loadSgThresholdFn)(int); 
+
     // Position integration multiplier (how many steps per second per unit of targetSpeed)
     float velocityMultiplier;
 };

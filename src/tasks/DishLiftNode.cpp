@@ -23,7 +23,8 @@ DishLiftNode::DishLiftNode()
           true, // Limits enabled
           0.5f,  // sgVelocityGatePercent
           savePos, loadPos, saveHome, saveTilt, loadLim,
-          StorageManager::loadDishLiftSGThreshold(20), // initial SG
+          20, // Default SG threshold
+          StorageManager::loadDishLiftSGThreshold, // Function pointer to load from NVS
           STEPPER_VEL_MULT // Lift velocity multiplier
       }) {}
 

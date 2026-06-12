@@ -30,7 +30,8 @@ ScraperArmNode::ScraperArmNode()
           true, // Limits enabled
           0.5f,  // sgVelocityGatePercent
           savePos, loadPos, saveClear, saveScrape, loadLim,
-          StorageManager::loadScraperArmSGThreshold(20), // initial SG Threshold
+          20, // Default SG Threshold
+          StorageManager::loadScraperArmSGThreshold, // Function pointer to load from NVS
           STEPPER_VEL_MULT // Arm velocity multiplier
       }) {}
 

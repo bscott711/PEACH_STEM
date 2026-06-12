@@ -41,6 +41,11 @@ void StepperAxisNode::hwInit() {
         config.loadLimitsFn(limitA, limitB, limitASet, limitBSet);
     }
 
+    // FIX: Load the ACTUAL SG threshold from NVS now!
+    if (config.loadSgThresholdFn) {
+        currentSgThreshold = config.loadSgThresholdFn(config.initialSgThreshold);
+    }
+
     driver.setStallGuardThreshold(currentSgThreshold);
 
     ESP_LOGI(config.axisName, "Loaded Limits: A=%.2f(%s) B=%.2f(%s) Pos=%.1f",
@@ -150,7 +155,7 @@ void StepperAxisNode::hwUpdate() {
     if (isHoming && isMovingStable && (now - movementStartTime) > 300) {
         bool stall = false;
         if (config.diagPin >= 0) {
-            stall = (digitalRead(config.diagPin) == LOW);
+            stall = (digitalRead(config.diagPin) == HIGH);
         } else {
             uint16_t sgResult = driver.getStallGuardResult();
             // TMC2209: SG_RESULT increases with load. Stall when it exceeds threshold.
@@ -176,19 +181,26 @@ void StepperAxisNode::hwUpdate() {
         if (isTrackingTarget) {
             float error = trackingTarget - currentPosition;
             
-            if (std::abs(error) <= 2.0f) {
+            // Only stop when we are within tolerance AND we have slowed down sufficiently
+            if (std::abs(error) <= MOTOR_TARGET_TOLERANCE && std::abs(targetSpeed) < 50) {
                 currentPosition = trackingTarget;
                 targetSpeed = 0;
                 isTrackingTarget = false;
                 LCD_setMessage("Target Reached");
             } else {
-                float ticksPerSec = 1000.0f / (float)TASK_UPDATE_INTERVAL_MS;
-                float exactSpeed = (error / config.velocityMultiplier) * ticksPerSec;
+                // Proportional speed calculation
+                float pSpeed = error * MOTOR_TRACKING_KP;
                 
-                if (exactSpeed > targetTrackingSpeed) exactSpeed = targetTrackingSpeed;
-                if (exactSpeed < -targetTrackingSpeed) exactSpeed = -targetTrackingSpeed;
+                // Clamp to max tracking speed
+                if (pSpeed > targetTrackingSpeed) pSpeed = targetTrackingSpeed;
+                if (pSpeed < -targetTrackingSpeed) pSpeed = -targetTrackingSpeed;
                 
-                targetSpeed = (int)exactSpeed;
+                // FIX: Low-pass filter for smooth acceleration.
+                // This prevents demanding infinite acceleration from the TMC2209,
+                // allowing the physical motor to keep up with the software's dead-reckoning.
+                float alpha = 0.3f; // Smoothing factor (lower = smoother acceleration)
+                float smoothed = (1.0f - alpha) * (float)targetSpeed + alpha * pSpeed;
+                targetSpeed = (int)smoothed;
             }
         }
 
@@ -240,8 +252,13 @@ void StepperAxisNode::hwUpdate() {
         bool stall = false;
         if (currentSgThreshold > 0) {
             if (config.diagPin >= 0) {
-                stall = (digitalRead(config.diagPin) == LOW);
+                // Hardware DIAG pin (typically HIGH on stall)
+                stall = (digitalRead(config.diagPin) == HIGH);
             } else {
+                // UART SG Reading
+                // Adjusted for your specific driver/board behavior: 
+                // 0 at no load, INCREASES under load. 
+                // Requires a value greater than (threshold * 2) to confirm a physical stall.
                 stall = (sgRaw >= (uint16_t)(currentSgThreshold * 2));
             }
         }

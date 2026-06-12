@@ -15,7 +15,8 @@ DishRotationNode::DishRotationNode()
           false, // NO limits (continuous rotation)
           0.5f,  // sgVelocityGatePercent
           savePos, loadPos, nullptr, nullptr, nullptr,
-          StorageManager::loadDishRotationSGThreshold(100), // initial SG
+          100, // Default SG
+          StorageManager::loadDishRotationSGThreshold, // Function pointer to load from NVS
           STEPPER_VEL_MULT // Rotation velocity multiplier
       }) {}
 
