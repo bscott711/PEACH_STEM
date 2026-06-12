@@ -23,12 +23,9 @@ void motorDriver::setVelocity(int newSpeed) {
   newSpeed = constrain(newSpeed, -MOTOR_MAX_SAFE_STEPS, MOTOR_MAX_SAFE_STEPS);
 
   if (xSemaphoreTake(tmcUartMutex, portMAX_DELAY) == pdTRUE) {
-    if (newSpeed > 0) {
-    driver.disableInverseMotorDirection();
-    } else {
-      driver.enableInverseMotorDirection();
-    }
-    driver.moveAtVelocity(abs(newSpeed));
+    // VACTUAL is a 24-bit signed integer, so we can just pass the signed speed directly!
+    // Changing InverseMotorDirection resets the microstep counter and causes drift.
+    driver.moveAtVelocity(newSpeed);
     xSemaphoreGive(tmcUartMutex);
   }
 }

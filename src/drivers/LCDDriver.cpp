@@ -158,7 +158,7 @@ static void draw_splashScreen() {
 
   currentLeaf = 0;
   fallingPeachLeafIndex = -1;
-  drawBranch(100, 22.0f, 22.0f, 64.0f, 12.0f, 0.0f, 0, 1);
+  drawBranch(100, 27.0f, 27.0f, 64.0f, 12.0f, 0.0f, 0, 1);
 
   // === Text (right of peach) ===
   u8g2.setFont(u8g2_font_helvB14_tr);
@@ -169,7 +169,7 @@ static void draw_splashScreen() {
 
   // Small version tag
   u8g2.setFont(u8g2_font_profont10_tf); // Small font
-  u8g2.drawStr(50, 62, "v3.1dev1");
+  u8g2.drawStr(50, 62, "v3.1dev2");
 
   u8g2.sendBuffer();
 }
@@ -179,7 +179,7 @@ void draw_wifiStatus(const char* status, const char* ssid, int attempt, bool fai
 
   currentLeaf = 0;
   fallingPeachLeafIndex = -1;
-  drawBranch(100, 22.0f, 22.0f, 64.0f, 12.0f, 0.0f, 0, 1);
+  drawBranch(100, 27.0f, 27.0f, 64.0f, 12.0f, 0.0f, 0, 1);
 
   // WiFi Connection text on the right
   u8g2.setFont(u8g2_font_helvB08_tr);

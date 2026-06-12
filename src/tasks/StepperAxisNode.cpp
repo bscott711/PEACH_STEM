@@ -155,7 +155,7 @@ void StepperAxisNode::hwUpdate() {
     if (isHoming && isMovingStable && (now - movementStartTime) > 300) {
         bool stall = false;
         if (config.diagPin >= 0) {
-            stall = (digitalRead(config.diagPin) == HIGH);
+            stall = (digitalRead(config.diagPin) == LOW);
         } else {
             uint16_t sgResult = driver.getStallGuardResult();
             // TMC2209: SG_RESULT increases with load. Stall when it exceeds threshold.
@@ -252,8 +252,8 @@ void StepperAxisNode::hwUpdate() {
         bool stall = false;
         if (currentSgThreshold > 0) {
             if (config.diagPin >= 0) {
-                // Hardware DIAG pin (typically HIGH on stall)
-                stall = (digitalRead(config.diagPin) == HIGH);
+                // Hardware DIAG pin (typically LOW on stall)
+                stall = (digitalRead(config.diagPin) == LOW);
             } else {
                 // UART SG Reading
                 // Adjusted for your specific driver/board behavior: 
@@ -281,9 +281,13 @@ void StepperAxisNode::hwUpdate() {
 
     // 8. Command Hardware
     if (motorLocked) {
-        driver.stop();
+        if (targetSpeed != 0 || previousTargetSpeed != 0) {
+            driver.stop();
+        }
     } else {
-        driver.setVelocity(targetSpeed);
+        if (targetSpeed != previousTargetSpeed) {
+            driver.setVelocity(targetSpeed);
+        }
     }
 
     // 9. Save Position on Stop
